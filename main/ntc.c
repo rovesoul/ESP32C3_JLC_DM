@@ -327,7 +327,7 @@ static void temp_adc_task(void* param)
                 //res = (voltage*NTC_RES)/(ADC_V_MAX-voltage);
                 //SEE先接ntc后接10k，测的ntc电压-dhb
                 res = NTC_RES*(ADC_V_MAX-voltage)/(voltage);
-                ESP_LOGI("ADCget","Original Value:%d",res);
+                // ESP_LOGI("ADCget","Original Value:%d",res); //SEE
                 //根据电阻值查表找出对应的温度
                 s_temp_value = get_ntc_temp(res);
             }

@@ -532,9 +532,10 @@ void pid_temperature_control_task(void *pvParameter)
         set_heater_pwm(heater_pid.pwm_duty);
         
         float pwm_percent = (heater_pid.pwm_duty * 100.0f) / MAX_PWM_DUTY;
-        ESP_LOGI(pidTAG, "目标:%.1f | NTC:%.2f | 误差:%.2f | PWM:%.0f%%", 
-                 heater_pid.target_temp, current_temp, 
-                 heater_pid.target_temp - current_temp, pwm_percent);
+        //SEE
+        // ESP_LOGI(pidTAG, "目标:%.1f | NTC:%.2f | 误差:%.2f | PWM:%.0f%%", 
+        //          heater_pid.target_temp, current_temp, 
+        //          heater_pid.target_temp - current_temp, pwm_percent);
         
         vTaskDelay(pdMS_TO_TICKS(PID_INTERVAL_MS));
     }
@@ -551,7 +552,7 @@ void tesk_dht22(void *pvParameter)
         dhtHumidity = getHumidity();
         xSemaphoreGive(dht22_mutex);
         
-        ESP_LOGI(dhtTAG, "温度:%.1f℃ 湿度:%.1f%%", dhtTemp, dhtHumidity);
+        // ESP_LOGI(dhtTAG, "温度:%.1f℃ 湿度:%.1f%%", dhtTemp, dhtHumidity); //SEE
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
