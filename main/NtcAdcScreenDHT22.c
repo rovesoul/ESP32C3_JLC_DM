@@ -282,6 +282,12 @@ float pid_compute(pid_controller_t *pid, float current_temp, float dt)
 
     float error = pid->target_temp - current_temp;
 
+    // 死区逻辑：如果误差在±0.5°C范围内，则不进行调整
+    if (fabs(error) < 0.1f) {
+        ESP_LOGI(pidTAG, "误差%.2f在死区内，无需调整", error);
+        return pid->output;  // 保持上次输出
+    }
+
     // ========== P项 ==========
     float p_term = pid->kp * error;
 

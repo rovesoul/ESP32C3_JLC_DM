@@ -76,8 +76,8 @@ static esp_err_t index_get_handler(httpd_req_t *req)
  */
 static esp_err_t values_get_handler(httpd_req_t *req)
 {
-    char response[128];
-    int len = snprintf(response, sizeof(response), "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"i\":%d}", PID_KP, PID_KI, PID_KD, for_loop_i);
+    char response[160];
+    int len = snprintf(response, sizeof(response), "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f,\"i\":%d}", PID_KP, PID_KI, PID_KD, TARGET_TEMP, for_loop_i);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, response, len);
     return ESP_OK;
@@ -86,7 +86,7 @@ static esp_err_t values_get_handler(httpd_req_t *req)
 /*
  * 保存 PID 参数到 NVS
  */
-static esp_err_t save_pid_to_nvs(float P, float I, float D)
+static esp_err_t save_pid_to_nvs(float P, float I, float D, float target_temp)
 {
     nvs_handle_t nvs_handle;
     esp_err_t err;
@@ -99,22 +99,22 @@ static esp_err_t save_pid_to_nvs(float P, float I, float D)
     }
 
     // 将三个 float 打包为数组保存
-    float pid_values[3] = {P, I, D};
+    float values[4] = {P, I, D, target_temp};
 
     // 写入 P、I、D 值（使用 blob 方式）
-    err = nvs_set_blob(nvs_handle, "pid_values", pid_values, sizeof(pid_values));
+    err = nvs_set_blob(nvs_handle, "pid_values", values, sizeof(values));
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error saving pid_values: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Error saving values: %s", esp_err_to_name(err));
         nvs_close(nvs_handle);
         return err;
     }
 
     // 提交更改到 Flash
     err = nvs_commit(nvs_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error committing NVS changes: %s", esp_err_to_name(err));
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Saved PID and TARGET_TEMP to NVS: P=%.2f, I=%.2f, D=%.2f, TARGET_TEMP=%.2f", P, I, D, target_temp);
     } else {
-        ESP_LOGI(TAG, "Saved PID to NVS: P=%.2f, I=%.2f, D=%.2f", P, I, D);
+        ESP_LOGE(TAG, "Error committing NVS changes: %s", esp_err_to_name(err));
     }
 
     nvs_close(nvs_handle);
@@ -139,15 +139,16 @@ static esp_err_t load_pid_from_nvs(void)
     }
 
     // 读取 P、I、D 值（使用 blob 方式）
-    float pid_values[3];
-    size_t required_size = sizeof(pid_values);
+    float values[4];
+    size_t required_size = sizeof(values);
 
-    err = nvs_get_blob(nvs_handle, "pid_values", pid_values, &required_size);
+    err = nvs_get_blob(nvs_handle, "pid_values", values, &required_size);
     if (err == ESP_OK) {
-        PID_KP = pid_values[0];
-        PID_KI = pid_values[1];
-        PID_KD = pid_values[2];
-        ESP_LOGI(TAG, "Loaded PID from NVS: P=%.2f, I=%.2f, D=%.2f", PID_KP, PID_KI, PID_KD);
+        PID_KP = values[0];
+        PID_KI = values[1];
+        PID_KD = values[2];
+        TARGET_TEMP = values[3];
+        ESP_LOGI(TAG, "Loaded PID and TARGET_TEMP from NVS: P=%.2f, I=%.2f, D=%.2f, TARGET_TEMP=%.2f", PID_KP, PID_KI, PID_KD, TARGET_TEMP);
     } else {
         ESP_LOGI(TAG, "No PID values found in NVS, using defaults");
     }
@@ -163,7 +164,7 @@ static esp_err_t config_post_handler(httpd_req_t *req)
 {
     int total_len = req->content_len;
     int cur_len = 0;
-    char buf[128];
+    char buf[160];
     int received = 0;
 
     // 读取请求体
@@ -180,21 +181,23 @@ static esp_err_t config_post_handler(httpd_req_t *req)
     buf[cur_len] = '\0';
 
     // 解析 JSON 并设置值
-    float P, I, D;
-    if (sscanf(buf, "{\"P\":%f,\"I\":%f,\"D\":%f}", &P, &I, &D) == 3) {
-        PID_KP   = P;
+    float P, I, D, target_temp;
+    if (sscanf(buf, "{\"P\":%f,\"I\":%f,\"D\":%f,\"TARGET_TEMP\":%f}", &P, &I, &D, &target_temp) == 4) {
+        PID_KP = P;
         PID_KI = I;
         PID_KD = D;
+        TARGET_TEMP = target_temp;
 
         // 更新 PID 控制器的参数
         heater_pid.kp = PID_KP;
         heater_pid.ki = PID_KI;
         heater_pid.kd = PID_KD;
+        heater_pid.target_temp = TARGET_TEMP;
 
         // 保存到 NVS
-        esp_err_t err = save_pid_to_nvs(PID_KP, PID_KI, PID_KD);
+        esp_err_t err = save_pid_to_nvs(PID_KP, PID_KI, PID_KD, TARGET_TEMP);
         if (err == ESP_OK) {
-            ESP_LOGI(TAG, "Updated PID: P=%.2f, I=%.2f, D=%.2f", PID_KP, PID_KI, PID_KD);
+            ESP_LOGI(TAG, "Updated PID and TARGET_TEMP: P=%.2f, I=%.2f, D=%.2f, TARGET_TEMP=%.2f", PID_KP, PID_KI, PID_KD, TARGET_TEMP);
             httpd_resp_send(req, "{\"status\":\"ok\"}", HTTPD_RESP_USE_STRLEN);
             return ESP_OK;
         } else {

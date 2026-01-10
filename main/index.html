@@ -64,6 +64,10 @@
           <label for="D_value">D 值:</label>
           <input type="number" id="D_value" step="0.01" value="0.0" />
         </div>
+        <div class="form-group">
+          <label for="TARGET_TEMP">目标温度:</label>
+          <input type="number" id="TARGET_TEMP" step="0.1" value="0.0" />
+        </div>
         <button type="submit">提交配置</button>
       </form>
 
@@ -72,6 +76,9 @@
         <div class="value-item">P: <span id="current_P">0.00</span></div>
         <div class="value-item">I: <span id="current_I">0.00</span></div>
         <div class="value-item">D: <span id="current_D">0.00</span></div>
+        <div class="value-item">
+          目标温度: <span id="current_TARGET_TEMP">0.0</span>
+        </div>
         <div class="value-item">
           <strong>循环计数:</strong> <span id="current_i">0</span>
         </div>
@@ -87,6 +94,7 @@
           const P = document.getElementById("P_value").value;
           const I = document.getElementById("I_value").value;
           const D = document.getElementById("D_value").value;
+          const TARGET_TEMP = document.getElementById("TARGET_TEMP").value;
 
           const response = await fetch("/config", {
             method: "POST",
@@ -95,6 +103,7 @@
               P: parseFloat(P),
               I: parseFloat(I),
               D: parseFloat(D),
+              TARGET_TEMP: parseFloat(TARGET_TEMP),
             }),
           });
 
@@ -113,6 +122,8 @@
         document.getElementById("current_I").textContent = data.I.toFixed(2);
         document.getElementById("current_D").textContent = data.D.toFixed(2);
         document.getElementById("current_i").textContent = data.i;
+        document.getElementById("current_TARGET_TEMP").textContent =
+          data.TARGET_TEMP.toFixed(1);
       }
 
       // 页面加载时获取当前 PID 数据并设置默认值
@@ -122,6 +133,8 @@
         document.getElementById("P_value").value = data.P.toFixed(2);
         document.getElementById("I_value").value = data.I.toFixed(2);
         document.getElementById("D_value").value = data.D.toFixed(2);
+        document.getElementById("TARGET_TEMP").value =
+          data.TARGET_TEMP.toFixed(1);
       }
 
       // 调用函数设置默认值
