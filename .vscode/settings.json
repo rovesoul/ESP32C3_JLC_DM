@@ -1,0 +1,18 @@
+{
+  "idf.openOcdConfigs": ["board/esp32c3-builtin.cfg"],
+  "idf.port": "/dev/tty.usbmodem2201",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32c3"
+  },
+  "clangd.path": "/home/rovesoul/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/bin/clangd",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=/home/rovesoul/.espressif/tools/riscv32-esp-elf/esp-14.2.0_20241119/riscv32-esp-elf/bin/riscv32-esp-elf-gcc",
+    "--compile-commands-dir=/home/rovesoul/esp/NtcAdcScreenDHT22/build"
+  ],
+  "idf.flashType": "UART",
+  "idf.espIdfPath": "/Users/donghuibiao/ESPIDF/v5.5.2/esp-idf",
+  "idf.toolsPath": "/Users/donghuibiao/.espressif",
+  "idf.pythonInstallPath": "/usr/local/bin/python3",
+  "idf.monitorPort": "/dev/tty.usbmodem2201"
+}

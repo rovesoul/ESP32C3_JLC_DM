@@ -1,0 +1,43 @@
+# Ignore build directory
+build/
+
+# Ignore backup files
+
+
+# Ignore other temporary files
+*.tmp
+*.log
+*.bak
+*.swp
+*.swo
+
+# Ignore SDK configuration backups
+sdkconfig.old
+
+# Ignore CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+build.ninja
+rules.ninja
+
+# Ignore compiled binaries
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.a
+*.d
+
+# Ignore flash arguments
+*_flash_args
+flasher_args.json
+
+# Ignore partition table files
+partition-table-flash_args
+
+# Ignore other generated files
+*.pyc
+*.pyo
+__pycache__/
