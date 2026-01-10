@@ -52,6 +52,9 @@ extern float PID_KP;
 extern float PID_KI;
 extern float PID_KD;
 extern float TARGET_TEMP;
+extern float ntcTemp;
+extern float dhtTemp;
+extern float dhtHumidity;
 
 // 声明 heater_pid 以访问主代码中的 PID 控制器
 extern pid_controller_t heater_pid;
@@ -75,8 +78,11 @@ static esp_err_t index_get_handler(httpd_req_t *req)
  */
 static esp_err_t values_get_handler(httpd_req_t *req)
 {
-    char response[160];
-    int len = snprintf(response, sizeof(response), "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f}", PID_KP, PID_KI, PID_KD, TARGET_TEMP);
+    char response[256];
+    float pwm_percent = (heater_pid.pwm_duty * 100.0f) / 10000;
+    int len = snprintf(response, sizeof(response),
+        "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f,\"ntcTemp\":%.2f,\"pwmPercent\":%.2f,\"dhtTemp\":%.2f,\"dhtHumidity\":%.2f}",
+        PID_KP, PID_KI, PID_KD, TARGET_TEMP, ntcTemp, pwm_percent, dhtTemp, dhtHumidity);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, response, len);
     return ESP_OK;

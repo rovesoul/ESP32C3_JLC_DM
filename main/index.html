@@ -108,6 +108,22 @@
           <span class="value-label">目标温度:</span>
           <span class="value-data" id="current_TARGET_TEMP">0.0</span>
         </div>
+        <div class="value-item">
+          <span class="value-label">NTC 温度:</span>
+          <span class="value-data" id="current_ntcTemp">0.0</span>
+        </div>
+        <div class="value-item">
+          <span class="value-label">PWM 百分比:</span>
+          <span class="value-data" id="current_pwmPercent">0.0%</span>
+        </div>
+        <div class="value-item">
+          <span class="value-label">DHT 温度:</span>
+          <span class="value-data" id="current_dhtTemp">0.0</span>
+        </div>
+        <div class="value-item">
+          <span class="value-label">DHT 湿度:</span>
+          <span class="value-data" id="current_dhtHumidity">0.0%</span>
+        </div>
       </div>
     </div>
 
@@ -149,6 +165,10 @@
         document.getElementById("current_D").textContent = data.D.toFixed(2);
         document.getElementById("current_TARGET_TEMP").textContent =
           data.TARGET_TEMP.toFixed(1);
+        document.getElementById("current_ntcTemp").textContent = data.ntcTemp.toFixed(1);
+        document.getElementById("current_pwmPercent").textContent = `${data.pwmPercent.toFixed(1)}%`;
+        document.getElementById("current_dhtTemp").textContent = data.dhtTemp.toFixed(1);
+        document.getElementById("current_dhtHumidity").textContent = `${data.dhtHumidity.toFixed(1)}%`;
       }
 
       // 页面加载时获取当前 PID 数据并设置默认值
