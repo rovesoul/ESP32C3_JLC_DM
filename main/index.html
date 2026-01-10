@@ -13,43 +13,62 @@
         margin: 0 auto;
       }
       .form-group {
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
       }
       label {
         display: block;
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.25rem;
         font-weight: bold;
+        font-size: 0.9rem;
       }
       input {
         width: 100%;
-        padding: 0.5rem;
+        padding: 0.25rem;
         box-sizing: border-box;
+        font-size: 0.9rem;
       }
       button {
         background-color: #4caf50;
         color: white;
-        padding: 0.75rem 1.5rem;
+        padding: 0.5rem 1rem;
         border: none;
         cursor: pointer;
-        font-size: 1rem;
+        font-size: 0.9rem;
       }
       button:hover {
         background-color: #45a049;
       }
       .values {
-        margin-top: 2rem;
+        margin-top: 1.5rem;
         padding: 1rem;
-        background-color: #f5f5f5;
-        border-radius: 5px;
+        background-color: #f9f9f9;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
       }
       .value-item {
-        margin: 0.5rem 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #e0e0e0;
+        font-size: 0.9rem;
+      }
+      .value-item:last-child {
+        border-bottom: none;
+      }
+      .value-label {
+        font-weight: bold;
+        color: #555;
+      }
+      .value-data {
+        color: #333;
       }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1>ESP32 PID 参数配置</h1>
+      <h1>发热片项目</h1>
+      <h1>ESP32C3 PID 参数配置</h1>
 
       <form id="configForm">
         <div class="form-group">
@@ -73,14 +92,21 @@
 
       <div class="values">
         <h3>当前值:</h3>
-        <div class="value-item">P: <span id="current_P">0.00</span></div>
-        <div class="value-item">I: <span id="current_I">0.00</span></div>
-        <div class="value-item">D: <span id="current_D">0.00</span></div>
         <div class="value-item">
-          目标温度: <span id="current_TARGET_TEMP">0.0</span>
+          <span class="value-label">P:</span>
+          <span class="value-data" id="current_P">0.00</span>
         </div>
         <div class="value-item">
-          <strong>循环计数:</strong> <span id="current_i">0</span>
+          <span class="value-label">I:</span>
+          <span class="value-data" id="current_I">0.00</span>
+        </div>
+        <div class="value-item">
+          <span class="value-label">D:</span>
+          <span class="value-data" id="current_D">0.00</span>
+        </div>
+        <div class="value-item">
+          <span class="value-label">目标温度:</span>
+          <span class="value-data" id="current_TARGET_TEMP">0.0</span>
         </div>
       </div>
     </div>
@@ -121,7 +147,6 @@
         document.getElementById("current_P").textContent = data.P.toFixed(2);
         document.getElementById("current_I").textContent = data.I.toFixed(2);
         document.getElementById("current_D").textContent = data.D.toFixed(2);
-        document.getElementById("current_i").textContent = data.i;
         document.getElementById("current_TARGET_TEMP").textContent =
           data.TARGET_TEMP.toFixed(1);
       }

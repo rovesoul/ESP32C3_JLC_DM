@@ -52,7 +52,6 @@ extern float PID_KP;
 extern float PID_KI;
 extern float PID_KD;
 extern float TARGET_TEMP;
-extern int for_loop_i;  // for_loop 循环计数器
 
 // 声明 heater_pid 以访问主代码中的 PID 控制器
 extern pid_controller_t heater_pid;
@@ -77,7 +76,7 @@ static esp_err_t index_get_handler(httpd_req_t *req)
 static esp_err_t values_get_handler(httpd_req_t *req)
 {
     char response[160];
-    int len = snprintf(response, sizeof(response), "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f,\"i\":%d}", PID_KP, PID_KI, PID_KD, TARGET_TEMP, for_loop_i);
+    int len = snprintf(response, sizeof(response), "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f}", PID_KP, PID_KI, PID_KD, TARGET_TEMP);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, response, len);
     return ESP_OK;

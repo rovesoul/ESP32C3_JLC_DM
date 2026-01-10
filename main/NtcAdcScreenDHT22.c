@@ -58,7 +58,7 @@ SemaphoreHandle_t oled_mutex;
 
 // ========== PID控制参数 ==========
 
-int for_loop_i = 0;  // 全局变量，供 HTTP 服务器读取
+
 float TARGET_TEMP  = 35.0f;    //目标温度
 float PID_KP  = 200.0f;   // 增大比例增益
 float PID_KI  = 180.0f;    // 增大积分增益
