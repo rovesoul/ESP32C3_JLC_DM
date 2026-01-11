@@ -5,6 +5,7 @@
  * 【√】温度曲线，挪到左边
  * 【√】温度码表，优化pid
  * 【√】优化代码，使pid生效 
+ * 【√】网页配置界面、曲线、开关按钮
  * 【】阶段优化冗余代码
  * 【】通风换气
  * 【】联网设置温度
@@ -119,6 +120,8 @@ pid_controller_t heater_pid;
 float ntcTemp = 0.0f;
 float dhtTemp = 0.0f;
 float dhtHumidity = 0.0f;
+// 全局变量表示当前状态（红/绿）
+bool is_OPEN = false;
 
 // ========== 数学辅助宏 ==========
 #ifndef M_PI

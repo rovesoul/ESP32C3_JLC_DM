@@ -55,6 +55,7 @@ extern float TARGET_TEMP;
 extern float ntcTemp;
 extern float dhtTemp;
 extern float dhtHumidity;
+extern bool is_OPEN;
 
 // 声明 heater_pid 以访问主代码中的 PID 控制器
 extern pid_controller_t heater_pid;
@@ -215,8 +216,7 @@ static esp_err_t config_post_handler(httpd_req_t *req)
     return ESP_FAIL;
 }
 
-// 全局变量表示当前状态（红/绿）
-static bool is_OPEN = false;
+
 
 /*
  * 保存 is_OPEN 状态到 NVS
