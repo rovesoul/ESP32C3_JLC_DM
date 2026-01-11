@@ -80,7 +80,7 @@ float PID_KD  = 10.0f;    // 减小微分增益
 #define OLED_ADD    0x78
 #define OLED_SPEED  400000
 #define FAN_GPIO    GPIO_NUM_6
-static uint8_t fan_state = 1;
+static uint8_t fan_state = 0;
 
 // ========== 温度曲线配置 ==========
 #define CURVE_START_X   0      // 曲线起始X坐标（右半屏）
@@ -520,26 +520,36 @@ void pid_temperature_control_task(void *pvParameter)
         // 添加温度到曲线（模式0使用）
         add_temp_to_curve(current_temp);
         
-        // 超温保护
-        if (current_temp > MAX_TEMP_LIMIT) {
-            ESP_LOGW(pidTAG, "⚠️ 超温保护！%.2f℃", current_temp);
-            set_heater_pwm(0);
-            heater_pid.integral = 0;
-            vTaskDelay(pdMS_TO_TICKS(PID_INTERVAL_MS));
-            continue;
+        if (is_OPEN) {
+            // 如果 is_OPEN 为 true，执行正常 PID 控制逻辑
+            if (current_temp > MAX_TEMP_LIMIT) {
+                ESP_LOGW(pidTAG, "⚠️ 超温保护！%.2f℃", current_temp);
+                set_heater_pwm(0);
+                heater_pid.integral = 0;
+                vTaskDelay(pdMS_TO_TICKS(PID_INTERVAL_MS));
+                continue;
+            }
+
+            // PID计算
+            float pid_output = pid_compute(&heater_pid, current_temp, dt);
+            heater_pid.pwm_duty = (uint32_t)pid_output;
+            set_heater_pwm(heater_pid.pwm_duty);
+
+            // 启动风扇
+            gpio_set_level(FAN_GPIO, 1);
+        } else {
+            // 如果 is_OPEN 为 false，关闭加热片
+            heater_pid.pwm_duty=0;
+            set_heater_pwm(heater_pid.pwm_duty);
+
+            // 检查温度是否低于 35°C
+            if (current_temp < 35.0f) {
+                gpio_set_level(FAN_GPIO, 0); // 关闭风扇
+            } else {
+                gpio_set_level(FAN_GPIO, 1); // 保持风扇运行
+            }
         }
-        
-        // PID计算
-        float pid_output = pid_compute(&heater_pid, current_temp, dt);
-        heater_pid.pwm_duty = (uint32_t)pid_output;
-        set_heater_pwm(heater_pid.pwm_duty);
-        
-        float pwm_percent = (heater_pid.pwm_duty * 100.0f) / MAX_PWM_DUTY;
-        //SEE
-        // ESP_LOGI(pidTAG, "目标:%.1f | NTC:%.2f | 误差:%.2f | PWM:%.0f%%", 
-        //          heater_pid.target_temp, current_temp, 
-        //          heater_pid.target_temp - current_temp, pwm_percent);
-        
+
         vTaskDelay(pdMS_TO_TICKS(PID_INTERVAL_MS));
     }
 }
