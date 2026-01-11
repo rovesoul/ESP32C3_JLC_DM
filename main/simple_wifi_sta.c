@@ -215,6 +215,109 @@ static esp_err_t config_post_handler(httpd_req_t *req)
     return ESP_FAIL;
 }
 
+// 全局变量表示当前状态（红/绿）
+static bool is_OPEN = false;
+
+/*
+ * 保存 is_OPEN 状态到 NVS
+ */
+static esp_err_t save_toggle_state_to_nvs(bool state) {
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Error opening NVS namespace: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    err = nvs_set_u8(nvs_handle, "toggle_state", state ? 1 : 0);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Error saving toggle state: %s", esp_err_to_name(err));
+        nvs_close(nvs_handle);
+        return err;
+    }
+
+    err = nvs_commit(nvs_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Error committing toggle state: %s", esp_err_to_name(err));
+    }
+
+    nvs_close(nvs_handle);
+    return err;
+}
+
+/*
+ * 从 NVS 加载 is_OPEN 状态
+ */
+static esp_err_t load_toggle_state_from_nvs(bool *state) {
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("storage", NVS_READONLY, &nvs_handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGI(TAG, "NVS namespace not found, using default toggle state");
+        *state = false;
+        return ESP_OK;
+    } else if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Error opening NVS namespace: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    uint8_t saved_state = 0;
+    err = nvs_get_u8(nvs_handle, "toggle_state", &saved_state);
+    if (err == ESP_OK) {
+        *state = saved_state ? true : false;
+        ESP_LOGI(TAG, "Loaded toggle state from NVS: %s", *state ? "OPEN" : "CLOSED");
+    } else {
+        ESP_LOGI(TAG, "No toggle state found in NVS, using default");
+        *state = false;
+    }
+
+    nvs_close(nvs_handle);
+    return ESP_OK;
+}
+
+/*
+ * HTTP POST 处理函数：切换状态
+ */
+static esp_err_t toggle_post_handler(httpd_req_t *req) {
+    is_OPEN = !is_OPEN; // 切换状态
+    save_toggle_state_to_nvs(is_OPEN); // 保存状态到 NVS
+
+    const char *response = is_OPEN ? "{\"status\":\"OPEN\"}" : "{\"status\":\"CLOSED\"}";
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
+    ESP_LOGI(TAG, "状态切换为: %s", is_OPEN ? "OPEN" : "CLOSED");
+    return ESP_OK;
+}
+
+// HTTP GET 处理函数：返回当前状态天0-esw0-mnnnnnnnnnnnnnnnnnnnnnn
+static esp_err_t toggle_get_handler(httpd_req_t *req) {
+    const char *response = is_OPEN ? "{\"status\":\"OPEN\"}" : "{\"status\":\"CLOSED\"}";
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
+    ESP_LOGI(TAG, "获取状态: %s", is_OPEN ? "OPEN" : "CLOSED");
+    return ESP_OK;
+}
+
+/*
+ * 注册切换状态的 URI
+ */
+void register_toggle_uri(httpd_handle_t server) {
+    httpd_uri_t uri_toggle_post = {
+        .uri       = "/toggle",
+        .method    = HTTP_POST,
+        .handler   = toggle_post_handler,
+        .user_ctx  = NULL
+    };
+    httpd_register_uri_handler(server, &uri_toggle_post);
+
+    httpd_uri_t uri_toggle_get = {
+        .uri       = "/toggle",
+        .method    = HTTP_GET,
+        .handler   = toggle_get_handler,
+        .user_ctx  = NULL
+    };
+    httpd_register_uri_handler(server, &uri_toggle_get);
+}
+
 /*
  * 事件回调函数：处理 WiFi 相关事件和 IP 获取事件
  * - WIFI_EVENT_*: 跟 WiFi 连接状态相关（启动、连接、断开）
@@ -285,6 +388,9 @@ static void event_handler(void* arg, esp_event_base_t event_base,int32_t event_i
                             };
                             httpd_register_uri_handler(server, &uri_config);
 
+                            // 注册新的 /toggle URI
+                            register_toggle_uri(server);
+
                             server_started = true; // 标记已启动
                             ESP_LOGI(TAG, "HTTP server started");
                         } else {
@@ -297,6 +403,20 @@ static void event_handler(void* arg, esp_event_base_t event_base,int32_t event_i
     }
 }
 
+
+// 在 WiFi 初始化时重置 toggle_state 为 0
+static void reset_toggle_state_on_boot(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK) {
+        nvs_set_u8(nvs_handle, "toggle_state", 0); // 设置为 0
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+        ESP_LOGI(TAG, "toggle_state 已重置为 0");
+    } else {
+        ESP_LOGE(TAG, "无法打开 NVS: %s", esp_err_to_name(err));
+    }
+}
 
 //WIFI STA初始化
 esp_err_t wifi_sta_init(void)
@@ -335,8 +455,9 @@ esp_err_t wifi_sta_init(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );   //设置wifi配置
     ESP_ERROR_CHECK(esp_wifi_start() );                         //启动WIFI
 
-    // 从 NVS 加载 PID 参数
+    reset_toggle_state_on_boot(); // 上电时重置 toggle_state
     load_pid_from_nvs();
+    load_toggle_state_from_nvs(&is_OPEN); // 加载开关状态
 
     ESP_LOGI(TAG, "wifi_init_sta finished.");
     return ESP_OK;

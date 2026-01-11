@@ -97,6 +97,14 @@
         <button type="submit">提交配置</button>
       </form>
 
+      <div class="form-group">
+        <label for="toggleSwitch">加热/风扇运行开关:</label>
+        <button id="toggleSwitch" style="background-color: red; color: white">
+          点击启动
+        </button>
+        <span>状态: <span id="currentStatus">未知</span></span>
+      </div>
+
       <div class="values">
         <h3>当前值:</h3>
         <div class="value-item">
@@ -269,13 +277,13 @@
 
         const now = new Date().toLocaleTimeString();
 
-        if (temperatureData.labels.length > 7200) {
+        if (temperatureData.labels.length > 1000) {
           temperatureData.labels.shift();
           temperatureData.datasets[0].data.shift();
           temperatureData.datasets[1].data.shift();
         }
 
-        if (humidityData.labels.length > 7200) {
+        if (humidityData.labels.length > 1000) {
           humidityData.labels.shift();
           humidityData.datasets[0].data.shift();
         }
@@ -324,6 +332,43 @@
       // 定时刷新
       getCurrentValues();
       setInterval(getCurrentValues, 1000);
+
+      const toggleButton = document.getElementById("toggleSwitch");
+      let isOPEN = false;
+
+      toggleButton.addEventListener("click", async () => {
+        const response = await fetch("/toggle", { method: "POST" });
+        if (response.ok) {
+          isOPEN = !isOPEN;
+          toggleButton.style.backgroundColor = isOPEN ? "green" : "red";
+          toggleButton.textContent = isOPEN
+            ? "正在运行点击关闭"
+            : "已关闭点击启动";
+          document.getElementById("currentStatus").textContent = isOPEN
+            ? "正在运行"
+            : "加热烘干模组关闭";
+        } else {
+          alert("切换失败！");
+        }
+      });
+
+      // 页面加载时获取当前开关状态
+      async function getToggleState() {
+        const response = await fetch("/toggle");
+        if (response.ok) {
+          const data = await response.json();
+          isOPEN = data.status === "OPEN";
+          toggleButton.style.backgroundColor = isOPEN ? "green" : "red";
+          toggleButton.textContent = isOPEN
+            ? "正在运行点击关闭"
+            : "已关闭点击启动";
+        } else {
+          alert("无法获取开关状态！");
+        }
+      }
+
+      // 页面加载时调用
+      getToggleState();
     </script>
   </body>
 </html>
