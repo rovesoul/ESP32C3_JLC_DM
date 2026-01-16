@@ -9,7 +9,7 @@
         margin: 2rem;
       }
       .container {
-        max-width: 600px;
+        max-width: 80%;
         margin: 0 auto;
       }
       .form-group {
@@ -94,6 +94,29 @@
           <label for="TARGET_TEMP">目标温度:</label>
           <input type="number" id="TARGET_TEMP" step="0.1" value="0.0" />
         </div>
+        <div class="form-group">
+          <label for="FAN_SPEED">风扇转速 (%):</label>
+          <input
+            type="number"
+            id="FAN_SPEED"
+            step="1"
+            min="0"
+            max="100"
+            value="100"
+          />
+        </div>
+        <div class="form-group">
+          <label for="TIMER_HOURS">定时器 (小时):</label>
+          <input
+            type="number"
+            id="TIMER_HOURS"
+            step="0.5"
+            min="0"
+            max="24"
+            value="0.0"
+            placeholder="0表示关闭定时器"
+          />
+        </div>
         <button type="submit">提交配置</button>
       </form>
 
@@ -103,6 +126,56 @@
           点击启动
         </button>
         <span>状态: <span id="currentStatus">未知</span></span>
+      </div>
+
+      <div
+        class="form-group"
+        id="timerDisplay"
+        style="
+          display: none;
+          margin-top: 1rem;
+          padding: 1rem;
+          background-color: #e3f2fd;
+          border-radius: 8px;
+        "
+      >
+        <label>⏱️ 定时器倒计时:</label>
+        <div
+          style="
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #1976d2;
+            margin-top: 0.5rem;
+          "
+          id="timerCountdown"
+        >
+          00:00:00
+        </div>
+      </div>
+
+      <div
+        class="form-group"
+        id="runningTimeDisplay"
+        style="
+          display: none;
+          margin-top: 1rem;
+          padding: 1rem;
+          background-color: #e8f5e9;
+          border-radius: 8px;
+        "
+      >
+        <label>⏰ 系统已运行时间:</label>
+        <div
+          style="
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2e7d32;
+            margin-top: 0.5rem;
+          "
+          id="runningTime"
+        >
+          00:00:00
+        </div>
       </div>
 
       <div class="values">
@@ -139,6 +212,10 @@
           <span class="value-label">DHT 湿度:</span>
           <span class="value-data" id="current_dhtHumidity">0.0%</span>
         </div>
+        <div class="value-item">
+          <span class="value-label">风扇转速:</span>
+          <span class="value-data" id="current_fanSpeed">0%</span>
+        </div>
       </div>
 
       <div class="charts">
@@ -149,7 +226,26 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-      // 提交配置
+      // ========== 定时器相关变量 ==========
+      let lastTimerRemaining = -1;  // 记录上次的后端倒计时值
+
+      // 格式化时间显示 HH:MM:SS
+      function formatTime(totalSeconds) {
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+          2,
+          "0"
+        )}:${String(seconds).padStart(2, "0")}`;
+      }
+
+      // 更新定时器显示
+      function updateTimerDisplay(seconds) {
+        document.getElementById("timerCountdown").textContent = formatTime(seconds);
+      }
+
+      // 提交配置(PID + 风扇转速 + 定时器)
       document
         .getElementById("configForm")
         .addEventListener("submit", async function (e) {
@@ -158,16 +254,25 @@
           const I = document.getElementById("I_value").value;
           const D = document.getElementById("D_value").value;
           const TARGET_TEMP = document.getElementById("TARGET_TEMP").value;
+          const FAN_SPEED = document.getElementById("FAN_SPEED").value;
+          const TIMER_HOURS = document.getElementById("TIMER_HOURS").value;
 
+          // 手动构建 JSON 字符串（确保无空格，与后端 sscanf 格式严格匹配）
+          const jsonBody = `{"P":${parseFloat(P)},"I":${parseFloat(
+            I
+          )},"D":${parseFloat(D)},"TARGET_TEMP":${parseFloat(
+            TARGET_TEMP
+          )},"fanSpeed":${parseFloat(FAN_SPEED)},"timerHours":${parseFloat(
+            TIMER_HOURS
+          )}}`;
+
+          console.log("发送到后端的 JSON:", jsonBody);
+
+          // 单次请求提交所有配置
           const response = await fetch("/config", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              P: parseFloat(P),
-              I: parseFloat(I),
-              D: parseFloat(D),
-              TARGET_TEMP: parseFloat(TARGET_TEMP),
-            }),
+            body: jsonBody,
           });
 
           if (response.ok) {
@@ -313,6 +418,37 @@
         document.getElementById(
           "current_dhtHumidity"
         ).textContent = `${data.dhtHumidity.toFixed(1)}%`;
+        document.getElementById(
+          "current_fanSpeed"
+        ).textContent = `${data.fanSpeed.toFixed(0)}%`;
+
+        // 更新系统运行时间显示
+        if (data.systemRunningSeconds > 0) {
+          document.getElementById("runningTime").textContent =
+            formatTime(data.systemRunningSeconds);
+          document.getElementById("runningTimeDisplay").style.display = "block";
+        } else {
+          document.getElementById("runningTimeDisplay").style.display = "none";
+        }
+
+        // 更新定时器倒计时显示（直接使用后端返回的值，不再使用本地倒计时）
+        if (data.timerRemaining > 0) {
+          document.getElementById("timerDisplay").style.display = "block";
+          updateTimerDisplay(data.timerRemaining);
+          lastTimerRemaining = data.timerRemaining;
+        } else if (data.timerRemaining === 0) {
+          // 定时器已到期
+          if (lastTimerRemaining > 0) {
+            // 从有值变为0，说明定时器刚到期，需要自动关闭系统
+            toggleSystem();
+            lastTimerRemaining = 0;
+          }
+          document.getElementById("timerDisplay").style.display = "none";
+        } else {
+          // timerRemaining < 0 或未定义，隐藏倒计时
+          document.getElementById("timerDisplay").style.display = "none";
+          lastTimerRemaining = -1;
+        }
       }
 
       // 页面加载时获取当前 PID 数据并设置默认值
@@ -324,33 +460,52 @@
         document.getElementById("D_value").value = data.D.toFixed(2);
         document.getElementById("TARGET_TEMP").value =
           data.TARGET_TEMP.toFixed(1);
+        document.getElementById("FAN_SPEED").value = data.fanSpeed.toFixed(0);
+        document.getElementById("TIMER_HOURS").value =
+          data.timerHours.toFixed(1);
       }
 
       // 调用函数设置默认值
       setDefaultValues();
 
-      // 定时刷新
+      // 定时刷新（统一在 getCurrentValues 中处理所有状态）
       getCurrentValues();
       setInterval(getCurrentValues, 1000);
 
       const toggleButton = document.getElementById("toggleSwitch");
       let isOPEN = false;
 
-      toggleButton.addEventListener("click", async () => {
+      // 更新UI状态的函数
+      function updateUIState() {
+        toggleButton.style.backgroundColor = isOPEN ? "green" : "red";
+        toggleButton.textContent = isOPEN
+          ? "正在运行点击关闭"
+          : "已关闭点击启动";
+        document.getElementById("currentStatus").textContent = isOPEN
+          ? "正在运行"
+          : "加热烘干模组关闭";
+      }
+
+      // 封装切换系统函数，供定时器调用
+      async function toggleSystem() {
         const response = await fetch("/toggle", { method: "POST" });
         if (response.ok) {
           isOPEN = !isOPEN;
-          toggleButton.style.backgroundColor = isOPEN ? "green" : "red";
-          toggleButton.textContent = isOPEN
-            ? "正在运行点击关闭"
-            : "已关闭点击启动";
-          document.getElementById("currentStatus").textContent = isOPEN
-            ? "正在运行"
-            : "加热烘干模组关闭";
+          updateUIState();
+
+          // 系统关闭时隐藏运行时间
+          if (!isOPEN) {
+            document.getElementById("runningTimeDisplay").style.display = "none";
+            document.getElementById("timerDisplay").style.display = "none";
+            lastTimerRemaining = -1;
+          }
+          // 系统启动时，显示区域由 getCurrentValues() 统一管理
         } else {
           alert("切换失败！");
         }
-      });
+      }
+
+      toggleButton.addEventListener("click", toggleSystem);
 
       // 页面加载时获取当前开关状态
       async function getToggleState() {
@@ -358,10 +513,7 @@
         if (response.ok) {
           const data = await response.json();
           isOPEN = data.status === "OPEN";
-          toggleButton.style.backgroundColor = isOPEN ? "green" : "red";
-          toggleButton.textContent = isOPEN
-            ? "正在运行点击关闭"
-            : "已关闭点击启动";
+          updateUIState();
         } else {
           alert("无法获取开关状态！");
         }

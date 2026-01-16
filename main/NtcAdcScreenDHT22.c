@@ -19,6 +19,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "dht22.h"
 #include "driver/ledc.h"
 #include "ntc.h"
@@ -57,6 +58,18 @@ SemaphoreHandle_t oled_mutex;
 #define HEATER_DUTY_RES      LEDC_TIMER_10_BIT  // 调整为10位分辨率
 #define HEATER_FREQUENCY     (500)              // 调整频率为500Hz
 
+// ========== 风扇PWM配置 (GPIO 6) ==========
+#define FAN_LEDC_TIMER       LEDC_TIMER_2
+#define FAN_LEDC_MODE        LEDC_LOW_SPEED_MODE
+#define FAN_PWM_IO           GPIO_NUM_6
+#define FAN_LEDC_CHANNEL     LEDC_CHANNEL_2
+#define FAN_DUTY_RES         LEDC_TIMER_10_BIT  // 10位分辨率 (0-1023)
+#define FAN_FREQUENCY        (500)            // 500Hz PWM
+
+// ========== 风扇控制模式选择 ==========
+#define FAN_USE_GPIO_OUTPUT  0  // 0=PWM控制, 1=简单GPIO开关(用于测试MOSFET)
+
+
 // ========== PID控制参数 ==========
 
 
@@ -79,8 +92,10 @@ float PID_KD  = 10.0f;    // 减小微分增益
 #define OLED_SDA    GPIO_NUM_4
 #define OLED_ADD    0x78
 #define OLED_SPEED  400000
-#define FAN_GPIO    GPIO_NUM_6
-static uint8_t fan_state = 0;
+
+// ========== 风扇转速配置 ==========
+float FAN_SPEED_PERCENT = 100.0f;    // 风扇转速百分比 (0-100)
+#define MAX_FAN_DUTY  10000           // 风扇最大占空比
 
 // ========== 温度曲线配置 ==========
 #define CURVE_START_X   0      // 曲线起始X坐标（右半屏）
@@ -122,6 +137,15 @@ float dhtTemp = 0.0f;
 float dhtHumidity = 0.0f;
 // 全局变量表示当前状态（红/绿）
 bool is_OPEN = false;
+
+// ========== 定时器相关变量 ==========
+float TIMER_HOURS_CONFIG = 0.0f;  // 用户配置的定时器时长（小时）
+TimerHandle_t timer_handle = NULL;  // FreeRTOS 定时器句柄
+int64_t timer_start_time_ms = 0;  // 定时器启动时间（毫秒）
+bool timer_is_running = false;  // 定时器是否正在运行
+
+// ========== 系统运行时间跟踪 ==========
+int64_t system_start_time_ms = 0;  // 系统启动时间（毫秒）
 
 // ========== 数学辅助宏 ==========
 #ifndef M_PI
@@ -349,6 +373,154 @@ void set_heater_pwm(uint32_t duty)
     ledc_update_duty(HEATER_LEDC_MODE, HEATER_LEDC_CHANNEL);
 }
 
+// ========== 风扇PWM初始化 ==========
+static void fan_ledc_init(void)
+{
+    ledc_timer_config_t fan_timer = {
+        .speed_mode      = FAN_LEDC_MODE,
+        .duty_resolution = FAN_DUTY_RES,
+        .timer_num       = FAN_LEDC_TIMER,
+        .freq_hz         = FAN_FREQUENCY,
+        .clk_cfg         = LEDC_AUTO_CLK
+    };
+    ESP_ERROR_CHECK(ledc_timer_config(&fan_timer));
+
+    ledc_channel_config_t fan_channel = {
+        .speed_mode = FAN_LEDC_MODE,
+        .channel    = FAN_LEDC_CHANNEL,
+        .timer_sel  = FAN_LEDC_TIMER,
+        .intr_type  = LEDC_INTR_DISABLE,
+        .gpio_num   = FAN_PWM_IO,
+        .duty       = 0,
+        .hpoint     = 0
+    };
+    ESP_ERROR_CHECK(ledc_channel_config(&fan_channel));
+    ESP_LOGI(pidTAG, "风扇PWM初始化完成 GPIO%d", FAN_PWM_IO);
+}
+
+// ========== 设置风扇PWM（内部函数，不修改全局变量）==========
+static void set_fan_pwm_internal(float percent)
+{
+    uint32_t duty;
+
+    if (percent < 10.0f) percent = 0.0f;
+    if (percent > 95.0f) percent = 95.0f;
+
+    // 最小占空比限制：避免MOSFET在极低占空比时无法导通
+    // 如果设置值 < 10%，强制为0（关闭风扇）
+    // 如果设置值 >= 10%，最小设为20%以确保MOSFET可靠导通
+    if (percent > 0.0f && percent < 10.0f) {
+        percent = 0.0f;  // 低于10%直接关闭
+    } else if (percent >= 10.0f && percent < 20.0f) {
+        percent = 20.0f;  // 10-20%范围提升到20%
+    }
+
+    // 简化计算：直接将百分比映射到PWM占空比
+    // 10位分辨率：0-1023，100% = 1023
+    duty = (uint32_t)((percent * ((1 << FAN_DUTY_RES) - 1)) / 100.0f);
+
+    ledc_set_duty(FAN_LEDC_MODE, FAN_LEDC_CHANNEL, duty);
+    ledc_update_duty(FAN_LEDC_MODE, FAN_LEDC_CHANNEL);
+
+    // ESP_LOGI(pidTAG, "set_fan_pwm_internal: %.1f%% → duty=%u", percent, duty);
+}
+
+// ========== 设置风扇PWM（公开函数，修改全局变量）==========
+void set_fan_pwm(float percent)
+{
+    // 先更新全局变量
+    if (percent < 10.0f) percent = 0.0f;
+    if (percent > 95.0f) percent = 95.0f;
+
+    // 最小占空比限制逻辑
+    if (percent > 0.0f && percent < 10.0f) {
+        percent = 0.0f;
+    } else if (percent >= 10.0f && percent < 20.0f) {
+        percent = 20.0f;
+    }
+
+    FAN_SPEED_PERCENT = percent;
+
+    // 调用内部函数设置硬件
+    set_fan_pwm_internal(percent);
+
+    // ESP_LOGI(pidTAG, "set_fan_pwm: FAN_SPEED_PERCENT 更新为 %.1f%%", FAN_SPEED_PERCENT);
+}
+
+// ========== 定时器回调函数 ==========
+static void timer_callback(TimerHandle_t timer)
+{
+    ESP_LOGI(pidTAG, "⏰ 定时器到期，自动关闭系统");
+    is_OPEN = false;
+    system_start_time_ms = 0;  // 重置系统运行时间
+    // 注意：定时器是单次触发，会自动停止
+}
+
+// ========== 创建定时器 ==========
+void create_system_timer(float hours)
+{
+    // 如果定时器已存在，先删除
+    if (timer_handle != NULL) {
+        xTimerStop(timer_handle, 0);
+        xTimerDelete(timer_handle, 0);
+        timer_handle = NULL;
+    }
+
+    // 如果定时器时长为0，不创建定时器
+    if (hours <= 0.0f) {
+        ESP_LOGI(pidTAG, "定时器未设置或为0，不创建定时器");
+        return;
+    }
+
+    // 计算定时器时长（转换为tick）
+    // 假设系统tick为1000Hz（1ms），需要将小时转换为毫秒
+    uint32_t timer_duration_ms = (uint32_t)(hours * 3600.0f * 1000.0f);
+    TickType_t timer_ticks = pdMS_TO_TICKS(timer_duration_ms);
+
+    // 创建软件定时器（单次触发）
+    timer_handle = xTimerCreate(
+        "system_timer",         // 定时器名称
+        timer_ticks,            // 定时器周期（ticks）
+        pdFALSE,                // 单次触发（不自动重载）
+        (void *)0,              // 定时器ID
+        timer_callback          // 回调函数
+    );
+
+    if (timer_handle == NULL) {
+        ESP_LOGE(pidTAG, "❌ 创建定时器失败");
+    } else {
+        ESP_LOGI(pidTAG, "✅ 定时器创建成功: %.1f小时 (%u毫秒)", hours, timer_duration_ms);
+    }
+}
+
+// ========== 启动定时器 ==========
+void start_system_timer(void)
+{
+    if (timer_handle != NULL) {
+        if (xTimerStart(timer_handle, 0) == pdPASS) {
+            timer_start_time_ms = esp_timer_get_time() / 1000;  // 记录启动时间（毫秒）
+            timer_is_running = true;
+            ESP_LOGI(pidTAG, "⏱️ 定时器已启动: %.1f小时, 启动时间=%lld", TIMER_HOURS_CONFIG, timer_start_time_ms);
+        } else {
+            ESP_LOGE(pidTAG, "❌ 启动定时器失败");
+        }
+    } else {
+        ESP_LOGW(pidTAG, "⚠️ 定时器未创建，无法启动");
+    }
+}
+
+// ========== 停止并删除定时器 ==========
+void stop_system_timer(void)
+{
+    if (timer_handle != NULL) {
+        xTimerStop(timer_handle, 0);
+        xTimerDelete(timer_handle, 0);
+        timer_handle = NULL;
+        timer_is_running = false;
+        ESP_LOGI(pidTAG, "⏹️ 定时器已停止并删除");
+    }
+}
+
 // ========== 添加温度到曲线缓冲区 ==========
 void add_temp_to_curve(float temp)
 {
@@ -526,6 +698,7 @@ void pid_temperature_control_task(void *pvParameter)
                 ESP_LOGW(pidTAG, "⚠️ 超温保护！%.2f℃", current_temp);
                 set_heater_pwm(0);
                 heater_pid.integral = 0;
+                set_fan_pwm(100.0f);  // 超温时风扇全速
                 vTaskDelay(pdMS_TO_TICKS(PID_INTERVAL_MS));
                 continue;
             }
@@ -535,8 +708,8 @@ void pid_temperature_control_task(void *pvParameter)
             heater_pid.pwm_duty = (uint32_t)pid_output;
             set_heater_pwm(heater_pid.pwm_duty);
 
-            // 启动风扇
-            gpio_set_level(FAN_GPIO, 1);
+            // 启动风扇（使用PWM控制转速）
+            set_fan_pwm(FAN_SPEED_PERCENT);
         } else {
             // 如果 is_OPEN 为 false，关闭加热片
             heater_pid.pwm_duty=0;
@@ -544,9 +717,17 @@ void pid_temperature_control_task(void *pvParameter)
 
             // 检查温度是否低于 35°C
             if (current_temp < 35.0f) {
-                gpio_set_level(FAN_GPIO, 0); // 关闭风扇
+                set_fan_pwm_internal(0.0f);  // 使用内部函数，不修改FAN_SPEED_PERCENT全局变量
+                static uint32_t log_count = 0;
+                if (++log_count % 25 == 0) {  // 每5秒打印一次
+                    ESP_LOGI(pidTAG, "系统关闭, 温度%.1f°C<35°C, 风扇关闭", current_temp);
+                }
             } else {
-                gpio_set_level(FAN_GPIO, 1); // 保持风扇运行
+                set_fan_pwm_internal(FAN_SPEED_PERCENT);  // 使用配置的风扇转速（不修改全局变量）
+                static uint32_t log_count2 = 0;
+                if (++log_count2 % 25 == 0) {  // 每5秒打印一次
+                    ESP_LOGI(pidTAG, "系统关闭, 温度%.1f°C>=35°C, 风扇%.1f%%", current_temp, FAN_SPEED_PERCENT);
+                }
             }
         }
 
@@ -611,28 +792,36 @@ void change_duty(void *pvParameter)
     }
 }
 
-static void configure_fan(void)
-{
-    ESP_LOGI(TAG, "Example configured to blink GPIO LED!");
-    gpio_reset_pin(FAN_GPIO);
-    /* Set the GPIO as a push/pull output */
-    gpio_set_direction(FAN_GPIO, GPIO_MODE_OUTPUT);
-}
-
-
 // ========== 主函数 ==========
 void app_main(void)
 {
     //NVS初始化（WIFI底层驱动有用到NVS，所以这里要初始化）
     nvs_flash_init();
+
+    // 检查 NVS 中存储的风扇转速
+    nvs_handle_t test_handle;
+    if (nvs_open("storage", NVS_READONLY, &test_handle) == ESP_OK) {
+        float test_fan_speed;
+        size_t size = sizeof(test_fan_speed);
+        esp_err_t err = nvs_get_blob(test_handle, "fan_speed", &test_fan_speed, &size);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "🔍 [NVS检查] NVS 中存储的风扇转速: %.1f%%", test_fan_speed);
+        } else {
+            ESP_LOGW(TAG, "🔍 [NVS检查] NVS 中没有风扇转速数据");
+        }
+        nvs_close(test_handle);
+    } else {
+        ESP_LOGE(TAG, "🔍 [NVS检查] 无法打开 NVS");
+    }
     //wifi STA工作模式初始化
     wifi_sta_init();
-    // fan初始化
-    configure_fan();
-    gpio_set_level(FAN_GPIO, fan_state);
+
     // 初始化呼吸灯
     LEDbubble_ledc_init();
-    
+
+    // 初始化风扇PWM硬件(不设置转速,由wifi_sta_init中从NVS加载)
+    fan_ledc_init();
+
     // 初始化加热片
     heater_ledc_init();
     
@@ -659,6 +848,10 @@ void app_main(void)
     xTaskCreatePinnedToCore(tesk_dht22, "dht22", 2048, NULL, 3, NULL, 0);
     xTaskCreatePinnedToCore(pid_temperature_control_task, "pid_ctrl", 4096, NULL, 4, NULL, 0);
     xTaskCreatePinnedToCore(oled_display_task, "oled_disp", 3072, NULL, 3, NULL, 0);
-    
+
     ESP_LOGI(TAG, "🚀 系统启动完成！");
+    ESP_LOGI(TAG, "风扇配置: 转速=%.1f%%, GPIO=%d", FAN_SPEED_PERCENT, FAN_PWM_IO);
+    ESP_LOGI(TAG, "当前状态: is_OPEN=%s", is_OPEN ? "开启" : "关闭");
+
+
 }

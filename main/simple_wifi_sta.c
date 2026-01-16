@@ -12,6 +12,7 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_http_server.h"
 #include "esp_netif.h"
 #include "lwip/inet.h"
@@ -56,6 +57,17 @@ extern float ntcTemp;
 extern float dhtTemp;
 extern float dhtHumidity;
 extern bool is_OPEN;
+extern float FAN_SPEED_PERCENT;
+extern float TIMER_HOURS_CONFIG;
+extern bool timer_is_running;
+extern int64_t timer_start_time_ms;
+extern int64_t system_start_time_ms;
+
+// 函数声明
+void set_fan_pwm(float percent);
+void create_system_timer(float hours);
+void start_system_timer(void);
+void stop_system_timer(void);
 
 // 声明 heater_pid 以访问主代码中的 PID 控制器
 extern pid_controller_t heater_pid;
@@ -79,48 +91,113 @@ static esp_err_t index_get_handler(httpd_req_t *req)
  */
 static esp_err_t values_get_handler(httpd_req_t *req)
 {
-    char response[256];
+    char response[500];
     float pwm_percent = (heater_pid.pwm_duty * 100.0f) / 10000;
+
+    // 计算定时器剩余秒数
+    int timer_remaining_seconds = 0;
+    if (timer_is_running && TIMER_HOURS_CONFIG > 0.0f) {
+        int64_t current_time_ms = esp_timer_get_time() / 1000;
+        int64_t elapsed_ms = current_time_ms - timer_start_time_ms;
+        int total_seconds = (int)(TIMER_HOURS_CONFIG * 3600.0f);
+        timer_remaining_seconds = total_seconds - (int)(elapsed_ms / 1000);
+        if (timer_remaining_seconds < 0) timer_remaining_seconds = 0;
+    }
+
+    // 计算系统运行时间（秒）
+    int system_running_seconds = 0;
+    if (is_OPEN && system_start_time_ms > 0) {
+        int64_t current_time_ms = esp_timer_get_time() / 1000;
+        system_running_seconds = (int)((current_time_ms - system_start_time_ms) / 1000);
+        if (system_running_seconds < 0) system_running_seconds = 0;
+    }
+
     int len = snprintf(response, sizeof(response),
-        "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f,\"ntcTemp\":%.2f,\"pwmPercent\":%.2f,\"dhtTemp\":%.2f,\"dhtHumidity\":%.2f}",
-        PID_KP, PID_KI, PID_KD, TARGET_TEMP, ntcTemp, pwm_percent, dhtTemp, dhtHumidity);
+        "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f,\"ntcTemp\":%.2f,\"pwmPercent\":%.2f,\"dhtTemp\":%.2f,\"dhtHumidity\":%.2f,\"fanSpeed\":%.1f,\"timerHours\":%.1f,\"timerRemaining\":%d,\"systemRunningSeconds\":%d}",
+        PID_KP, PID_KI, PID_KD, TARGET_TEMP, ntcTemp, pwm_percent, dhtTemp, dhtHumidity, FAN_SPEED_PERCENT, TIMER_HOURS_CONFIG, timer_remaining_seconds, system_running_seconds);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, response, len);
     return ESP_OK;
 }
 
 /*
- * 保存 PID 参数到 NVS
+ * 统一保存配置到 NVS（一次性保存所有配置）
+ * @param save_pid: 是否保存 PID 参数
+ * @param save_fan: 是否保存风扇转速
+ * @param save_toggle: 是否保存开关状态
+ * @param save_timer: 是否保存定时器配置
+ * @param P, I, D, TARGET_TEMP: PID 参数（当 save_pid=true 时有效）
+ * @param fan_speed: 风扇转速（当 save_fan=true 时有效）
+ * @param toggle_state: 开关状态（当 save_toggle=true 时有效）
+ * @param timer_hours: 定时器时长（当 save_timer=true 时有效）
  */
-static esp_err_t save_pid_to_nvs(float P, float I, float D, float target_temp)
+static esp_err_t save_config_to_nvs(bool save_pid, bool save_fan, bool save_toggle, bool save_timer,
+                                     float P, float I, float D, float target_temp,
+                                     float fan_speed, bool toggle_state, float timer_hours)
 {
     nvs_handle_t nvs_handle;
     esp_err_t err;
 
-    // 打开 NVS 命名空间
     err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Error opening NVS namespace: %s", esp_err_to_name(err));
         return err;
     }
 
-    // 将三个 float 打包为数组保存
-    float values[4] = {P, I, D, target_temp};
-
-    // 写入 P、I、D 值（使用 blob 方式）
-    err = nvs_set_blob(nvs_handle, "pid_values", values, sizeof(values));
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error saving values: %s", esp_err_to_name(err));
-        nvs_close(nvs_handle);
-        return err;
+    // 保存 PID 参数
+    if (save_pid) {
+        float pid_values[4] = {P, I, D, target_temp};
+        err = nvs_set_blob(nvs_handle, "pid_values", pid_values, sizeof(pid_values));
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "Saved PID to NVS: P=%.2f, I=%.2f, D=%.2f, TARGET=%.2f", P, I, D, target_temp);
+        } else {
+            ESP_LOGE(TAG, "Error saving PID: %s", esp_err_to_name(err));
+            nvs_close(nvs_handle);
+            return err;
+        }
     }
 
-    // 提交更改到 Flash
+    // 保存风扇转速
+    if (save_fan) {
+        ESP_LOGI(TAG, "=== 准备保存风扇转速到 NVS: %.1f%% ===", fan_speed);
+        err = nvs_set_blob(nvs_handle, "fan_speed", &fan_speed, sizeof(fan_speed));
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "✅ 风扇转速已保存到 NVS: %.1f%%", fan_speed);
+        } else {
+            ESP_LOGE(TAG, "❌ 保存风扇转速失败: %s", esp_err_to_name(err));
+            nvs_close(nvs_handle);
+            return err;
+        }
+    }
+
+    // 保存开关状态
+    if (save_toggle) {
+        err = nvs_set_u8(nvs_handle, "toggle_state", toggle_state ? 1 : 0);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "Saved toggle state to NVS: %s", toggle_state ? "OPEN" : "CLOSED");
+        } else {
+            ESP_LOGE(TAG, "Error saving toggle state: %s", esp_err_to_name(err));
+            nvs_close(nvs_handle);
+            return err;
+        }
+    }
+
+    // 保存定时器配置
+    if (save_timer) {
+        err = nvs_set_blob(nvs_handle, "timer_hours", &timer_hours, sizeof(timer_hours));
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "✅ 定时器配置已保存到 NVS: %.1f小时", timer_hours);
+        } else {
+            ESP_LOGE(TAG, "❌ 保存定时器配置失败: %s", esp_err_to_name(err));
+            nvs_close(nvs_handle);
+            return err;
+        }
+    }
+
+    // 提交所有更改到 Flash
     err = nvs_commit(nvs_handle);
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG, "Saved PID and TARGET_TEMP to NVS: P=%.2f, I=%.2f, D=%.2f, TARGET_TEMP=%.2f", P, I, D, target_temp);
-    } else {
-        ESP_LOGE(TAG, "Error committing NVS changes: %s", esp_err_to_name(err));
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Error committing NVS: %s", esp_err_to_name(err));
     }
 
     nvs_close(nvs_handle);
@@ -128,35 +205,95 @@ static esp_err_t save_pid_to_nvs(float P, float I, float D, float target_temp)
 }
 
 /*
- * 从 NVS 加载 PID 参数
+ * 统一从 NVS 加载配置（一次性加载所有配置）
+ * @param load_pid: 是否加载 PID 参数
+ * @param load_fan: 是否加载风扇转速
+ * @param load_toggle: 是否加载开关状态
+ * @param load_timer: 是否加载定时器配置
+ * @param state_out: 开关状态输出指针（当 load_toggle=true 时有效）
+ * @param apply_fan_pwm: 是否立即应用风扇PWM（通常上电时应为false）
  */
-static esp_err_t load_pid_from_nvs(void)
+static esp_err_t load_config_from_nvs(bool load_pid, bool load_fan, bool load_toggle, bool load_timer,
+                                       bool *state_out, bool apply_fan_pwm)
 {
     nvs_handle_t nvs_handle;
     esp_err_t err;
 
     err = nvs_open("storage", NVS_READONLY, &nvs_handle);
     if (err == ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGI(TAG, "NVS namespace not found, using default values");
-        return err;
+        ESP_LOGI(TAG, "NVS namespace not found, using defaults");
+        if (load_toggle && state_out) *state_out = false;
+        if (load_fan) FAN_SPEED_PERCENT = 100.0f;
+        return ESP_OK;
     } else if (err != ESP_OK) {
         ESP_LOGE(TAG, "Error opening NVS namespace: %s", esp_err_to_name(err));
         return err;
     }
 
-    // 读取 P、I、D 值（使用 blob 方式）
-    float values[4];
-    size_t required_size = sizeof(values);
+    // 加载 PID 参数
+    if (load_pid) {
+        float pid_values[4];
+        size_t required_size = sizeof(pid_values);
+        err = nvs_get_blob(nvs_handle, "pid_values", pid_values, &required_size);
+        if (err == ESP_OK) {
+            PID_KP = pid_values[0];
+            PID_KI = pid_values[1];
+            PID_KD = pid_values[2];
+            TARGET_TEMP = pid_values[3];
+            ESP_LOGI(TAG, "Loaded PID from NVS: P=%.2f, I=%.2f, D=%.2f, TARGET=%.2f",
+                     PID_KP, PID_KI, PID_KD, TARGET_TEMP);
+        } else {
+            ESP_LOGI(TAG, "No PID values found in NVS, using defaults");
+        }
+    }
 
-    err = nvs_get_blob(nvs_handle, "pid_values", values, &required_size);
-    if (err == ESP_OK) {
-        PID_KP = values[0];
-        PID_KI = values[1];
-        PID_KD = values[2];
-        TARGET_TEMP = values[3];
-        ESP_LOGI(TAG, "Loaded PID and TARGET_TEMP from NVS: P=%.2f, I=%.2f, D=%.2f, TARGET_TEMP=%.2f", PID_KP, PID_KI, PID_KD, TARGET_TEMP);
-    } else {
-        ESP_LOGI(TAG, "No PID values found in NVS, using defaults");
+    // 加载风扇转速
+    if (load_fan) {
+        float fan_speed;
+        size_t required_size = sizeof(fan_speed);
+        ESP_LOGI(TAG, "=== 准备从 NVS 读取风扇转速 ===");
+        err = nvs_get_blob(nvs_handle, "fan_speed", &fan_speed, &required_size);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "✅ 从 NVS 读取到风扇转速: %.1f%%", fan_speed);
+            FAN_SPEED_PERCENT = fan_speed;
+            if (apply_fan_pwm) {
+                set_fan_pwm(fan_speed);
+            }
+            ESP_LOGI(TAG, "风扇转速已更新: %.1f%% %s",
+                     FAN_SPEED_PERCENT, apply_fan_pwm ? "(已应用PWM)" : "(未应用PWM)");
+        } else {
+            ESP_LOGW(TAG, "⚠️ NVS 中未找到风扇转速，使用默认值 100%%");
+            FAN_SPEED_PERCENT = 100.0f;
+        }
+    }
+
+    // 加载定时器配置
+    if (load_timer) {
+        float timer_hours;
+        size_t required_size = sizeof(timer_hours);
+        err = nvs_get_blob(nvs_handle, "timer_hours", &timer_hours, &required_size);
+        if (err == ESP_OK) {
+            TIMER_HOURS_CONFIG = timer_hours;
+            ESP_LOGI(TAG, "✅ 从 NVS 读取到定时器配置: %.1f小时", TIMER_HOURS_CONFIG);
+            // 创建定时器（但不启动）
+            create_system_timer(TIMER_HOURS_CONFIG);
+        } else {
+            ESP_LOGW(TAG, "⚠️ NVS 中未找到定时器配置，使用默认值 0小时");
+            TIMER_HOURS_CONFIG = 0.0f;
+        }
+    }
+
+    // 加载开关状态
+    if (load_toggle && state_out) {
+        uint8_t saved_state = 0;
+        err = nvs_get_u8(nvs_handle, "toggle_state", &saved_state);
+        if (err == ESP_OK) {
+            *state_out = saved_state ? true : false;
+            ESP_LOGI(TAG, "Loaded toggle state from NVS: %s", *state_out ? "OPEN" : "CLOSED");
+        } else {
+            ESP_LOGI(TAG, "No toggle state found in NVS, using default");
+            *state_out = false;
+        }
     }
 
     nvs_close(nvs_handle);
@@ -164,14 +301,13 @@ static esp_err_t load_pid_from_nvs(void)
 }
 
 /*
- * HTTP POST 处理函数：接收并设置 PID 参数
+ * HTTP POST 处理函数：接收并设置 PID 参数和风扇转速
  */
 static esp_err_t config_post_handler(httpd_req_t *req)
 {
     int total_len = req->content_len;
     int cur_len = 0;
-    char buf[160];
-    int received = 0;
+    char buf[250];
 
     // 读取请求体
     while (cur_len < total_len) {
@@ -186,9 +322,17 @@ static esp_err_t config_post_handler(httpd_req_t *req)
     }
     buf[cur_len] = '\0';
 
-    // 解析 JSON 并设置值
-    float P, I, D, target_temp;
-    if (sscanf(buf, "{\"P\":%f,\"I\":%f,\"D\":%f,\"TARGET_TEMP\":%f}", &P, &I, &D, &target_temp) == 4) {
+    ESP_LOGI(TAG, "=== 收到前端配置数据: %s ===", buf);
+
+    // 解析 JSON 并设置值 (包含风扇转速和定时器)
+    float P, I, D, target_temp, fan_speed, timer_hours;
+    int parsed = sscanf(buf, "{\"P\":%f,\"I\":%f,\"D\":%f,\"TARGET_TEMP\":%f,\"fanSpeed\":%f,\"timerHours\":%f}",
+                        &P, &I, &D, &target_temp, &fan_speed, &timer_hours);
+
+    ESP_LOGI(TAG, "=== JSON解析结果: parsed=%d, P=%.2f, I=%.2f, D=%.2f, TARGET=%.2f, FAN=%.1f, TIMER=%.1f ===",
+             parsed, P, I, D, target_temp, fan_speed, timer_hours);
+
+    if (parsed == 6) {  // 6个参数都成功解析
         PID_KP = P;
         PID_KI = I;
         PID_KD = D;
@@ -200,10 +344,26 @@ static esp_err_t config_post_handler(httpd_req_t *req)
         heater_pid.kd = PID_KD;
         heater_pid.target_temp = TARGET_TEMP;
 
-        // 保存到 NVS
-        esp_err_t err = save_pid_to_nvs(PID_KP, PID_KI, PID_KD, TARGET_TEMP);
+        // 限制风扇转速范围
+        if (fan_speed < 0.0f) fan_speed = 0.0f;
+        if (fan_speed > 100.0f) fan_speed = 100.0f;
+
+        FAN_SPEED_PERCENT = fan_speed;
+        set_fan_pwm(fan_speed);
+
+        // 更新定时器配置
+        TIMER_HOURS_CONFIG = timer_hours;
+        create_system_timer(timer_hours);
+        ESP_LOGI(TAG, "✅ 定时器配置已更新: %.1f小时", timer_hours);
+
+        // 保存到 NVS（统一保存 PID + 风扇 + 定时器）
+        esp_err_t err = save_config_to_nvs(true, true, false, true,
+                                          PID_KP, PID_KI, PID_KD, TARGET_TEMP,
+                                          fan_speed, false, timer_hours);
+
         if (err == ESP_OK) {
-            ESP_LOGI(TAG, "Updated PID and TARGET_TEMP: P=%.2f, I=%.2f, D=%.2f, TARGET_TEMP=%.2f", PID_KP, PID_KI, PID_KD, TARGET_TEMP);
+            ESP_LOGI(TAG, "Updated config: P=%.2f, I=%.2f, D=%.2f, TARGET_TEMP=%.2f, fanSpeed=%.1f%%, timerHours=%.1f",
+                     PID_KP, PID_KI, PID_KD, TARGET_TEMP, fan_speed, timer_hours);
             httpd_resp_send(req, "{\"status\":\"ok\"}", HTTPD_RESP_USE_STRLEN);
             return ESP_OK;
         } else {
@@ -217,69 +377,32 @@ static esp_err_t config_post_handler(httpd_req_t *req)
 }
 
 
-
-/*
- * 保存 is_OPEN 状态到 NVS
- */
-static esp_err_t save_toggle_state_to_nvs(bool state) {
-    nvs_handle_t nvs_handle;
-    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error opening NVS namespace: %s", esp_err_to_name(err));
-        return err;
-    }
-
-    err = nvs_set_u8(nvs_handle, "toggle_state", state ? 1 : 0);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error saving toggle state: %s", esp_err_to_name(err));
-        nvs_close(nvs_handle);
-        return err;
-    }
-
-    err = nvs_commit(nvs_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error committing toggle state: %s", esp_err_to_name(err));
-    }
-
-    nvs_close(nvs_handle);
-    return err;
-}
-
-/*
- * 从 NVS 加载 is_OPEN 状态
- */
-static esp_err_t load_toggle_state_from_nvs(bool *state) {
-    nvs_handle_t nvs_handle;
-    esp_err_t err = nvs_open("storage", NVS_READONLY, &nvs_handle);
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGI(TAG, "NVS namespace not found, using default toggle state");
-        *state = false;
-        return ESP_OK;
-    } else if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error opening NVS namespace: %s", esp_err_to_name(err));
-        return err;
-    }
-
-    uint8_t saved_state = 0;
-    err = nvs_get_u8(nvs_handle, "toggle_state", &saved_state);
-    if (err == ESP_OK) {
-        *state = saved_state ? true : false;
-        ESP_LOGI(TAG, "Loaded toggle state from NVS: %s", *state ? "OPEN" : "CLOSED");
-    } else {
-        ESP_LOGI(TAG, "No toggle state found in NVS, using default");
-        *state = false;
-    }
-
-    nvs_close(nvs_handle);
-    return ESP_OK;
-}
-
 /*
  * HTTP POST 处理函数：切换状态
  */
 static esp_err_t toggle_post_handler(httpd_req_t *req) {
     is_OPEN = !is_OPEN; // 切换状态
-    save_toggle_state_to_nvs(is_OPEN); // 保存状态到 NVS
+
+    // 根据系统状态启动或停止定时器
+    if (is_OPEN) {
+        // 系统启动，如果设置了定时器则启动
+        if (TIMER_HOURS_CONFIG > 0.0f) {
+            start_system_timer();
+            ESP_LOGI(TAG, "⏱️ 系统启动，定时器已启动: %.1f小时", TIMER_HOURS_CONFIG);
+        } else {
+            ESP_LOGI(TAG, "✅ 系统启动，未设置定时器");
+        }
+        // 记录系统启动时间
+        system_start_time_ms = esp_timer_get_time() / 1000;
+        ESP_LOGI(TAG, "⏰ 系统运行时间已开始记录");
+    } else {
+        // 系统关闭，停止定时器
+        stop_system_timer();
+        system_start_time_ms = 0;  // 重置运行时间
+        ESP_LOGI(TAG, "⏹️ 系统关闭，定时器已停止，运行时间已重置");
+    }
+
+    save_config_to_nvs(false, false, true, false, 0, 0, 0, 0, 0, is_OPEN, 0.0f); // 只保存开关状态
 
     const char *response = is_OPEN ? "{\"status\":\"OPEN\"}" : "{\"status\":\"CLOSED\"}";
     httpd_resp_set_type(req, "application/json");
@@ -388,7 +511,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,int32_t event_i
                             };
                             httpd_register_uri_handler(server, &uri_config);
 
-                            // 注册新的 /toggle URI
+                            // 注册 /toggle URI
                             register_toggle_uri(server);
 
                             server_started = true; // 标记已启动
@@ -403,20 +526,6 @@ static void event_handler(void* arg, esp_event_base_t event_base,int32_t event_i
     }
 }
 
-
-// 在 WiFi 初始化时重置 toggle_state 为 0
-static void reset_toggle_state_on_boot(void) {
-    nvs_handle_t nvs_handle;
-    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
-    if (err == ESP_OK) {
-        nvs_set_u8(nvs_handle, "toggle_state", 0); // 设置为 0
-        nvs_commit(nvs_handle);
-        nvs_close(nvs_handle);
-        ESP_LOGI(TAG, "toggle_state 已重置为 0");
-    } else {
-        ESP_LOGE(TAG, "无法打开 NVS: %s", esp_err_to_name(err));
-    }
-}
 
 //WIFI STA初始化
 esp_err_t wifi_sta_init(void)
@@ -455,9 +564,24 @@ esp_err_t wifi_sta_init(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );   //设置wifi配置
     ESP_ERROR_CHECK(esp_wifi_start() );                         //启动WIFI
 
-    reset_toggle_state_on_boot(); // 上电时重置 toggle_state
-    load_pid_from_nvs();
-    load_toggle_state_from_nvs(&is_OPEN); // 加载开关状态
+    // 上电时强制重置为关闭状态，防止断电恢复后热惯性导致过热
+    ESP_LOGI(TAG, "========== 上电初始化开始 ==========");
+
+    is_OPEN = false;  // 强制设置为关闭状态
+    ESP_LOGI(TAG, "① 设置 is_OPEN = false");
+
+    save_config_to_nvs(false, false, true, false, 0, 0, 0, 0, 0, is_OPEN, 0.0f);  // 写入 NVS
+    ESP_LOGI(TAG, "② 已保存开关状态到 NVS（不保存风扇转速）");
+
+
+    // 统一加载所有配置（PID + 风扇 + 定时器，不立即应用PWM）
+    ESP_LOGI(TAG, "④ 准备从 NVS 加载配置...");
+    load_config_from_nvs(true, true, false, true, NULL, false);
+
+    ESP_LOGI(TAG, "========== 上电初始化完成，最终风扇转速: %.1f%%, 定时器: %.1f小时 ==========",
+             FAN_SPEED_PERCENT, TIMER_HOURS_CONFIG);
+
+    ESP_LOGI(TAG, "上电初始化完成: is_OPEN=false (需手动启动), 风扇已关闭");
 
     ESP_LOGI(TAG, "wifi_init_sta finished.");
     return ESP_OK;
