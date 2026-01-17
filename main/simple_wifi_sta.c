@@ -58,6 +58,8 @@ extern float dhtTemp;
 extern float dhtHumidity;
 extern bool is_OPEN;
 extern float FAN_SPEED_PERCENT;
+extern float FAN_ACTUAL_PWM;
+extern bool FAN_IS_RUNNING;
 extern float TIMER_HOURS_CONFIG;
 extern bool timer_is_running;
 extern int64_t timer_start_time_ms;
@@ -91,7 +93,7 @@ static esp_err_t index_get_handler(httpd_req_t *req)
  */
 static esp_err_t values_get_handler(httpd_req_t *req)
 {
-    char response[500];
+    char response[600];
     float pwm_percent = (heater_pid.pwm_duty * 100.0f) / 10000;
 
     // 计算定时器剩余秒数
@@ -113,8 +115,8 @@ static esp_err_t values_get_handler(httpd_req_t *req)
     }
 
     int len = snprintf(response, sizeof(response),
-        "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f,\"ntcTemp\":%.2f,\"pwmPercent\":%.2f,\"dhtTemp\":%.2f,\"dhtHumidity\":%.2f,\"fanSpeed\":%.1f,\"timerHours\":%.1f,\"timerRemaining\":%d,\"systemRunningSeconds\":%d}",
-        PID_KP, PID_KI, PID_KD, TARGET_TEMP, ntcTemp, pwm_percent, dhtTemp, dhtHumidity, FAN_SPEED_PERCENT, TIMER_HOURS_CONFIG, timer_remaining_seconds, system_running_seconds);
+        "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f,\"ntcTemp\":%.2f,\"pwmPercent\":%.2f,\"dhtTemp\":%.2f,\"dhtHumidity\":%.2f,\"fanSpeed\":%.1f,\"fanActualPwm\":%.1f,\"fanRunning\":%s,\"timerHours\":%.1f,\"timerRemaining\":%d,\"systemRunningSeconds\":%d}",
+        PID_KP, PID_KI, PID_KD, TARGET_TEMP, ntcTemp, pwm_percent, dhtTemp, dhtHumidity, FAN_SPEED_PERCENT, FAN_ACTUAL_PWM, FAN_IS_RUNNING ? "true" : "false", TIMER_HOURS_CONFIG, timer_remaining_seconds, system_running_seconds);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, response, len);
     return ESP_OK;

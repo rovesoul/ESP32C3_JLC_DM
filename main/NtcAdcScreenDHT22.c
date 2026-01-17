@@ -101,6 +101,8 @@ float PID_KD  = 10.0f;    // 减小微分增益
 // ========== 风扇转速配置 ==========
 float FAN_SPEED_PERCENT = 100.0f;    // 风扇转速百分比 (0-100)
 #define MAX_FAN_DUTY  10000           // 风扇最大占空比
+float FAN_ACTUAL_PWM = 0.0f;         // 风扇实际PWM输出百分比 (0-100)
+bool FAN_IS_RUNNING = false;         // 风扇运行状态 (true=运行, false=停止)
 
 // ========== 温度曲线配置 ==========
 #define CURVE_START_X   0      // 曲线起始X坐标（右半屏）
@@ -419,6 +421,10 @@ static void set_fan_pwm_internal(float percent)
     } else if (percent >= 10.0f && percent < 20.0f) {
         percent = 20.0f;  // 10-20%范围提升到20%
     }
+
+    // 更新实际PWM输出百分比和运行状态
+    FAN_ACTUAL_PWM = percent;
+    FAN_IS_RUNNING = (percent > 0.0f);
 
     // 简化计算：直接将百分比映射到PWM占空比
     // 10位分辨率：0-1023，100% = 1023

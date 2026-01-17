@@ -48,7 +48,7 @@
         background: white;
         border-radius: 16px;
         padding: 1.5rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1rem;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
       }
 
@@ -358,13 +358,13 @@
         padding: 0.5rem;
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        height: 400px; /* 增大图表高度 */
+        height: 350px; /* 增大图表高度 */
       }
 
       canvas {
         width: 100% !important;
         height: 100% !important;
-        min-height: 400px !important;
+        min-height: 350px !important;
       }
 
       /* 响应式 */
@@ -564,12 +564,20 @@
             <div class="value-data" id="current_dhtHumidity">0.0%</div>
           </div>
           <div class="value-item">
-            <div class="value-label">PWM输出</div>
+            <div class="value-label">发热片PWM</div>
             <div class="value-data" id="current_pwmPercent">0.0%</div>
           </div>
           <div class="value-item">
-            <div class="value-label">风扇转速</div>
+            <div class="value-label">风扇转速配置</div>
             <div class="value-data" id="current_fanSpeed">0%</div>
+          </div>
+          <div class="value-item">
+            <div class="value-label">风扇状态</div>
+            <div class="value-data" id="current_fanStatus">--</div>
+          </div>
+          <div class="value-item">
+            <div class="value-label">风扇实际PWM</div>
+            <div class="value-data" id="current_fanActualPwm">0%</div>
           </div>
         </div>
 
@@ -694,13 +702,13 @@
                   },
                   usePointStyle: true,
                   boxWidth: 6,
-                  padding: 10,
+                  padding: 6,
                   borderRadius: 4,
                 },
               },
               title: {
                 display: true,
-                text: "温度曲线",
+                text: "温度曲线(°C)",
                 font: {
                   size: 12,
                   weight: "600",
@@ -708,7 +716,7 @@
                 },
                 padding: {
                   top: 5,
-                  bottom: 10,
+                  bottom: 5,
                 },
               },
             },
@@ -716,7 +724,7 @@
               x: {
                 title: {
                   display: true,
-                  text: "时间",
+                  text: "",
                   font: {
                     size: 10,
                   },
@@ -730,7 +738,7 @@
               y: {
                 title: {
                   display: true,
-                  text: "温度 (°C)",
+                  text: "",
                   font: {
                     size: 10,
                   },
@@ -764,13 +772,13 @@
                   },
                   usePointStyle: true,
                   boxWidth: 6,
-                  padding: 10,
+                  padding: 6,
                   borderRadius: 4,
                 },
               },
               title: {
                 display: true,
-                text: "湿度曲线",
+                text: "湿度曲线(%)",
                 font: {
                   size: 12,
                   weight: "600",
@@ -778,7 +786,7 @@
                 },
                 padding: {
                   top: 5,
-                  bottom: 10,
+                  bottom: 5,
                 },
               },
             },
@@ -786,7 +794,7 @@
               x: {
                 title: {
                   display: true,
-                  text: "时间",
+                  text: "",
                   font: {
                     size: 10,
                   },
@@ -800,7 +808,7 @@
               y: {
                 title: {
                   display: true,
-                  text: "湿度 (%)",
+                  text: "",
                   font: {
                     size: 10,
                   },
@@ -859,6 +867,18 @@
           data.dhtHumidity.toFixed(1) + "%";
         document.getElementById("current_fanSpeed").textContent =
           data.fanSpeed.toFixed(0) + "%";
+
+        // 更新风扇状态和实际PWM
+        const fanStatusEl = document.getElementById("current_fanStatus");
+        if (data.fanRunning === true) {
+          fanStatusEl.textContent = "运行中";
+          fanStatusEl.style.color = "#2e7d32"; // 绿色
+        } else {
+          fanStatusEl.textContent = "已停止";
+          fanStatusEl.style.color = "#c62828"; // 红色
+        }
+        document.getElementById("current_fanActualPwm").textContent =
+          data.fanActualPwm.toFixed(0) + "%";
 
         // 更新系统运行时间显示
         if (data.systemRunningSeconds > 0) {
