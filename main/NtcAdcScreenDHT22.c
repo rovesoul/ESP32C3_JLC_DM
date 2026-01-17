@@ -12,6 +12,7 @@
  * 【√】增加风扇实际速度显示
  * 【√】配置联网模式
  * 【】修改仪表盘为半圆，并且显示网址
+ * 【】倒计时结束，不关机
  * 【】阶段优化冗余代码
  * 【】拆分代码
  * 【】ui风格切换（黑金、夜晚、白天、目前的）
@@ -91,7 +92,7 @@ float PID_KD  = 10.0f;    // 减小微分增益
 #define MIN_PWM_DUTY     0
 
 // ========== 显示模式选择 ==========
-#define DISPLAY_MODE    1    // 0=曲线+文字  1=仪表盘+文字
+#define DISPLAY_MODE    2    // 0=曲线+文字  1=仪表盘+文字  2=半圆仪表盘+文字
 
 // ========== OLED配置 ==========
 #define OLED_I2C    I2C_NUM_0
@@ -169,7 +170,7 @@ static uint8_t curve_index = 0;
 // ========== 仪表盘绘制函数 ==========
 
 /**
- * @brief 将温度转换为角度
+ * @brief 将温度转换为角度（圆形仪表盘）
  * @param temp 温度值
  * @return 对应的角度（度）
  */
@@ -177,10 +178,38 @@ float temp_to_angle(float temp)
 {
     if (temp < GAUGE_MIN_TEMP) temp = GAUGE_MIN_TEMP;
     if (temp > GAUGE_MAX_TEMP) temp = GAUGE_MAX_TEMP;
-    
+
     float ratio = (temp - GAUGE_MIN_TEMP) / (GAUGE_MAX_TEMP - GAUGE_MIN_TEMP);
     float angle = GAUGE_START_ANGLE + ratio * (GAUGE_END_ANGLE - GAUGE_START_ANGLE);
-    
+
+    return angle;
+}
+
+/**
+ * @brief 将数值向上取整到最近的10的倍数
+ * @param val 输入值
+ * @return 向上取整到10的倍数
+ */
+int round_up_to_10(float val)
+{
+    int ival = (int)val;
+    return (ival + 9) / 10 * 10;
+}
+
+/**
+ * @brief 将温度转换为半圆角度
+ * @param temp 温度值
+ * @param max_temp 最大温度值
+ * @return 对应的角度（度），-180°=左侧，-90°=顶部，0°=右侧
+ */
+float temp_to_semi_angle(float temp, float max_temp)
+{
+    if (temp < 0) temp = 0;
+    if (temp > max_temp) temp = max_temp;
+
+    float ratio = temp / max_temp;
+    float angle = -180.0f + ratio * 180.0f;  // -180°~0°
+
     return angle;
 }
 
@@ -208,59 +237,119 @@ void draw_gauge_ticks(void)
 }
 
 /**
- * @brief 绘制目标温度三角形标记
+ * @brief 绘制目标温度三角形标记（圆形仪表盘）
  * @param target_temp 目标温度
  */
 void draw_target_marker(float target_temp)
 {
     float angle = temp_to_angle(target_temp);
     float rad = angle * M_PI / 180.0f;
-    
+
     // 三角形顶点在内
     int16_t x_tip = GAUGE_CENTER_X + (int16_t)((GAUGE_RADIUS -3) * cos(rad));
     int16_t y_tip = GAUGE_CENTER_Y + (int16_t)((GAUGE_RADIUS -3) * sin(rad));
-    
+
     // 三角形底边两个点（指向圆外）
     float perp_angle1 = angle + 8;// 增大=三角形更宽
     float perp_angle2 = angle - 8;
     float perp_rad1 = perp_angle1 * M_PI / 180.0f;
     float perp_rad2 = perp_angle2 * M_PI / 180.0f;
-    
+
     int16_t base_dist = GAUGE_RADIUS +4; // 增大=三角形更长
     int16_t x_base1 = GAUGE_CENTER_X + (int16_t)(base_dist * cos(perp_rad1));
     int16_t y_base1 = GAUGE_CENTER_Y + (int16_t)(base_dist * sin(perp_rad1));
-    
+
     int16_t x_base2 = GAUGE_CENTER_X + (int16_t)(base_dist * cos(perp_rad2));
     int16_t y_base2 = GAUGE_CENTER_Y + (int16_t)(base_dist * sin(perp_rad2));
-    
+
     // 绘制实心三角形
     OLED_DrawTriangle(x_tip, y_tip, x_base1, y_base1, x_base2, y_base2, OLED_FILLED);
 }
 
 /**
- * @brief 绘制温度指针
+ * @brief 绘制半圆目标温度三角形标记
+ * @param target_temp 目标温度
+ * @param max_temp 最大温度值
+ * @param center_x 圆心X坐标
+ * @param center_y 圆心Y坐标
+ * @param radius 半径
+ */
+void draw_semi_target_marker(float target_temp, float max_temp, int16_t center_x, int16_t center_y, int16_t radius)
+{
+    float angle = temp_to_semi_angle(target_temp, max_temp);
+    float rad = angle * M_PI / 180.0f;
+
+    // 三角形顶点在内
+    int16_t x_tip = center_x + (int16_t)((radius - 3) * cos(rad));
+    int16_t y_tip = center_y + (int16_t)((radius - 3) * sin(rad));
+
+    // 三角形底边两个点（指向圆外）
+    float perp_angle1 = angle + 8;
+    float perp_angle2 = angle - 8;
+    float perp_rad1 = perp_angle1 * M_PI / 180.0f;
+    float perp_rad2 = perp_angle2 * M_PI / 180.0f;
+
+    int16_t base_dist = radius + 4;
+    int16_t x_base1 = center_x + (int16_t)(base_dist * cos(perp_rad1));
+    int16_t y_base1 = center_y + (int16_t)(base_dist * sin(perp_rad1));
+
+    int16_t x_base2 = center_x + (int16_t)(base_dist * cos(perp_rad2));
+    int16_t y_base2 = center_y + (int16_t)(base_dist * sin(perp_rad2));
+
+    // 绘制实心三角形
+    OLED_DrawTriangle(x_tip, y_tip, x_base1, y_base1, x_base2, y_base2, OLED_FILLED);
+}
+
+/**
+ * @brief 绘制温度指针（圆形仪表盘）
  * @param current_temp 当前温度
  */
 void draw_temperature_pointer(float current_temp)
 {
     float angle = temp_to_angle(current_temp);
     float rad = angle * M_PI / 180.0f;
-    
+
     // 指针从中心指向外圈
     int16_t x_end = GAUGE_CENTER_X + (int16_t)(GAUGE_POINTER_LEN * cos(rad));
     int16_t y_end = GAUGE_CENTER_Y + (int16_t)(GAUGE_POINTER_LEN * sin(rad));
-    
+
     // 绘制指针线（加粗效果）
     OLED_DrawLine(GAUGE_CENTER_X, GAUGE_CENTER_Y, x_end, y_end);
     OLED_DrawLine(GAUGE_CENTER_X + 1, GAUGE_CENTER_Y, x_end + 1, y_end);
     OLED_DrawLine(GAUGE_CENTER_X, GAUGE_CENTER_Y + 1, x_end, y_end + 1);
-    
+
     // 中心点（表盘中心装饰）
     OLED_DrawCircle(GAUGE_CENTER_X, GAUGE_CENTER_Y, 2, OLED_FILLED);
 }
 
 /**
- * @brief 绘制完整仪表盘
+ * @brief 绘制半圆温度指针
+ * @param current_temp 当前温度
+ * @param max_temp 最大温度值
+ * @param center_x 圆心X坐标
+ * @param center_y 圆心Y坐标
+ * @param pointer_len 指针长度
+ */
+void draw_semi_temperature_pointer(float current_temp, float max_temp, int16_t center_x, int16_t center_y, int16_t pointer_len)
+{
+    float angle = temp_to_semi_angle(current_temp, max_temp);
+    float rad = angle * M_PI / 180.0f;
+
+    // 指针从中心指向外圈
+    int16_t x_end = center_x + (int16_t)(pointer_len * cos(rad));
+    int16_t y_end = center_y + (int16_t)(pointer_len * sin(rad));
+
+    // 绘制指针线（加粗效果）
+    OLED_DrawLine(center_x, center_y, x_end, y_end);
+    OLED_DrawLine(center_x + 1, center_y, x_end + 1, y_end);
+    OLED_DrawLine(center_x, center_y + 1, x_end, y_end + 1);
+
+    // 中心点
+    OLED_DrawCircle(center_x, center_y, 2, OLED_FILLED);
+}
+
+/**
+ * @brief 绘制完整仪表盘（圆形）
  * @param current_temp 当前温度
  * @param target_temp 目标温度
  */
@@ -271,25 +360,114 @@ void draw_gauge(float current_temp, float target_temp)
     // OLED_DrawCircle(GAUGE_CENTER_X, GAUGE_CENTER_Y, GAUGE_INNER_RADIUS, OLED_UNFILLED);
     // 2. 绘制刻度点
     draw_gauge_ticks();
-    
+
     // 3. 绘制目标温度三角形
     draw_target_marker(target_temp);
-    
+
     // 4. 绘制温度指针
     draw_temperature_pointer(current_temp);
-    
+
     // 5. 在仪表盘下方显示温度数值
     char temp_str[16];
     snprintf(temp_str, sizeof(temp_str), "%.1fC", current_temp);
-    
+
     // 居中显示温度数值
     uint8_t str_len = strlen(temp_str);
     uint8_t str_width = str_len * 6;  // OLED_6X8字体宽度
     int16_t text_x = GAUGE_CENTER_X - str_width / 2;
     int16_t text_y = GAUGE_CENTER_Y + GAUGE_RADIUS + 6;
-    
+
     if (text_y < 64 - 8) {  // 确保不超出屏幕
         OLED_ShowString(text_x, text_y, temp_str, OLED_6X8);
+    }
+}
+
+/**
+ * @brief 绘制半圆仪表盘刻度点
+ * @param max_temp 最大温度值
+ * @param center_x 圆心X坐标
+ * @param center_y 圆心Y坐标
+ * @param radius 半径
+ */
+void draw_semi_gauge_ticks(float max_temp, int16_t center_x, int16_t center_y, int16_t radius)
+{
+    // 计算刻度间隔（每10度一个刻度）
+    int tick_interval = 10;
+    int num_ticks = (int)max_temp / tick_interval;
+
+    for (int i = 0; i <= num_ticks; i++) {
+        float temp = i * tick_interval;
+        float angle = temp_to_semi_angle(temp, max_temp);
+        float rad = angle * M_PI / 180.0f;
+
+        // 外圈刻度点
+        int16_t x_outer = center_x + (int16_t)((radius - 2) * cos(rad));
+        int16_t y_outer = center_y + (int16_t)((radius - 2) * sin(rad));
+
+        // 画一个小圆点（3x3像素）
+        OLED_DrawPoint(x_outer, y_outer);
+        OLED_DrawPoint(x_outer + 1, y_outer);
+        OLED_DrawPoint(x_outer, y_outer + 1);
+        OLED_DrawPoint(x_outer - 1, y_outer);
+        OLED_DrawPoint(x_outer, y_outer - 1);
+    }
+}
+
+/**
+ * @brief 绘制半圆仪表盘
+ * @param current_temp 当前温度
+ * @param target_temp 目标温度
+ */
+void draw_semi_gauge(float current_temp, float target_temp)
+{
+    // 计算最大温度值（目标温度+10，向上取整到10的倍数）
+    float max_temp = (float)round_up_to_10(target_temp + 10);
+
+    // 屏幕左上区域绘制，圆心在左侧中间偏上
+    int16_t center_x = 31;
+    int16_t center_y = 30;
+    int16_t radius = 30;
+
+    // 1. 绘制半圆弧（-180°到0°，即左侧半圆）
+    OLED_DrawArc(center_x, center_y, radius, -180, 0, OLED_UNFILLED);
+
+    // 2. 绘制刻度点
+    draw_semi_gauge_ticks(max_temp, center_x, center_y, radius);
+
+    // 3. 绘制目标温度三角形
+    draw_semi_target_marker(target_temp, max_temp, center_x, center_y, radius);
+
+    // 4. 绘制温度指针
+    draw_semi_temperature_pointer(current_temp, max_temp, center_x, center_y, 20);
+
+    // 5. 在半圆下方显示WiFi IP地址（两行显示）
+    const char* ip_addr = get_wifi_ip_address();
+
+    if (strcmp(ip_addr, "No IP") != 0) {
+        char ip_copy[16];
+        strcpy(ip_copy, ip_addr);
+
+        // 找到前两个点，分割IP地址
+        char *first_dot = strchr(ip_copy, '.');
+        char *second_dot = NULL;
+        if (first_dot) {
+            second_dot = strchr(first_dot + 1, '.');
+        }
+
+        if (first_dot && second_dot) {
+            *second_dot = '\0';  // 截断前两段
+
+            char first_part[20];
+            char second_part[20];
+            snprintf(first_part, sizeof(first_part), "%s.", ip_copy);  // 第一行带点: 192.168.
+            snprintf(second_part, sizeof(second_part), "%s", second_dot + 1);  // 第二行带点: .50.223
+
+            OLED_ShowString(8, 40, first_part, OLED_6X8);   // 第一行: 192.168.
+            OLED_ShowString(8, 50, second_part, OLED_6X8);  // 第二行: .50.223
+        }
+    } else {
+        char no_ip[] = "No IP";
+        OLED_ShowString(0, 40, no_ip, OLED_6X8);
     }
 }
 
@@ -613,28 +791,28 @@ void draw_right_text_area(void)
 
     // 目标温度
     snprintf(buffer, sizeof(buffer), "SET:%.1fC", heater_pid.target_temp);
-    OLED_ShowString(TEXT_START_X, 0, buffer, OLED_6X8);
+    OLED_ShowString(TEXT_START_X, 1, buffer, OLED_6X8);
 
     // PID参数
     snprintf(buffer, sizeof(buffer), "%.1f %.1f %.1f", PID_KP, PID_KI, PID_KD);
-    OLED_ShowString(TEXT_START_X, 10, buffer, OLED_6X8);
+    OLED_ShowString(TEXT_START_X, 11, buffer, OLED_6X8);
 
     // NTC温度
     snprintf(buffer, sizeof(buffer), "NTC:%.1fC", ntcTemp);
-    OLED_ShowString(TEXT_START_X, 23, buffer, OLED_6X8);
+    OLED_ShowString(TEXT_START_X, 21, buffer, OLED_6X8);
 
     // DHT22温度
     snprintf(buffer, sizeof(buffer), "DHT:%.1fC", dhtTemp);
-    OLED_ShowString(TEXT_START_X, 33, buffer, OLED_6X8);
+    OLED_ShowString(TEXT_START_X, 31, buffer, OLED_6X8);
 
     // 湿度
     snprintf(buffer, sizeof(buffer), "HUM:%.1f%%", dhtHumidity);
-    OLED_ShowString(TEXT_START_X, 43, buffer, OLED_6X8);
+    OLED_ShowString(TEXT_START_X, 41, buffer, OLED_6X8);
 
     // PWM输出百分比
     float pwm_percent = (heater_pid.pwm_duty * 100.0f) / MAX_PWM_DUTY;
     snprintf(buffer, sizeof(buffer), "PWM:%.1f%%", pwm_percent);
-    OLED_ShowString(TEXT_START_X, 56, buffer, OLED_6X8);
+    OLED_ShowString(TEXT_START_X, 51, buffer, OLED_6X8);
 }
 
 // ========== 统一OLED显示任务 ==========
@@ -679,6 +857,18 @@ void oled_display_task(void *pvParameter)
 
         // 左侧绘制仪表盘
         draw_gauge(ntcTemp, heater_pid.target_temp);
+
+        // 绘制右侧文字信息
+        draw_right_text_area();
+
+#elif DISPLAY_MODE == 2
+        // ========== 模式2：半圆仪表盘+文字 ==========
+
+        // 清除整个屏幕
+        OLED_Clear();
+
+        // 左侧绘制半圆仪表盘
+        draw_semi_gauge(ntcTemp, heater_pid.target_temp);
 
         // 绘制右侧文字信息
         draw_right_text_area();

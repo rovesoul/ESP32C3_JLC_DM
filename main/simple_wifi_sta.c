@@ -49,6 +49,9 @@ extern const unsigned char _binary_index_html_end[]   asm("_binary_index_html_en
 static httpd_handle_t server = NULL;
 static bool server_started = false;
 
+// WiFi IP地址存储（全局可访问）
+static char wifi_ip_address[16] = "No IP";
+
 // PID 参数全局变量
 extern float PID_KP;
 extern float PID_KI;
@@ -485,9 +488,8 @@ static void event_handler(void* arg, esp_event_base_t event_base,int32_t event_i
                 {
                     // 从事件数据结构中提取 IP 信息并打印（更易读）
                     ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-                    char ip_str[16];
-                    inet_ntoa_r(event->ip_info.ip, ip_str, sizeof(ip_str));
-                    ESP_LOGI(TAG, "got ip: %s", ip_str);
+                    inet_ntoa_r(event->ip_info.ip, wifi_ip_address, sizeof(wifi_ip_address));
+                    ESP_LOGI(TAG, "got ip: %s", wifi_ip_address);
 
                     // 仅在尚未启动 HTTP 服务时启动一次
                     if (!server_started) {
@@ -631,4 +633,10 @@ esp_err_t wifi_sta_init(void)
                 NULL);
 
     return ESP_OK;
+}
+
+// 获取WiFi IP地址字符串
+const char* get_wifi_ip_address(void)
+{
+    return wifi_ip_address;
 }
