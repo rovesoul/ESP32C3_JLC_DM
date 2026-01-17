@@ -277,6 +277,9 @@ static esp_err_t load_config_from_nvs(bool load_pid, bool load_fan, bool load_to
             ESP_LOGI(TAG, "✅ 从 NVS 读取到定时器配置: %.1f小时", TIMER_HOURS_CONFIG);
             // 创建定时器（但不启动）
             create_system_timer(TIMER_HOURS_CONFIG);
+            // 上电时强制重置定时器运行状态
+            timer_is_running = false;
+            timer_start_time_ms = 0;
         } else {
             ESP_LOGW(TAG, "⚠️ NVS 中未找到定时器配置，使用默认值 0小时");
             TIMER_HOURS_CONFIG = 0.0f;
@@ -582,6 +585,11 @@ esp_err_t wifi_sta_init(void)
              FAN_SPEED_PERCENT, TIMER_HOURS_CONFIG);
 
     ESP_LOGI(TAG, "上电初始化完成: is_OPEN=false (需手动启动), 风扇已关闭");
+
+    // 再次确认设置为关闭状态(双重保险)
+    is_OPEN = false;
+    save_config_to_nvs(false, false, true, false, 0, 0, 0, 0, 0, is_OPEN, 0.0f);
+    ESP_LOGI(TAG, "🔒 已强制保存关闭状态到NVS,确保上电安全");
 
     ESP_LOGI(TAG, "wifi_init_sta finished.");
     return ESP_OK;

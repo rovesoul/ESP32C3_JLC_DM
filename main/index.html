@@ -1,233 +1,594 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <title>ESP32 Embedded Page</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>发热片控制系统</title>
     <style>
-      body {
-        font-family: Arial, Helvetica, sans-serif;
-        margin: 2rem;
-      }
-      .container {
-        max-width: 80%;
-        margin: 0 auto;
-      }
-      .form-group {
-        margin-bottom: 0.5rem;
-      }
-      label {
-        display: block;
-        margin-bottom: 0.25rem;
-        font-weight: bold;
-        font-size: 0.9rem;
-      }
-      input {
-        width: 100%;
-        padding: 0.25rem;
+      * {
+        margin: 0;
+        padding: 0;
         box-sizing: border-box;
-        font-size: 0.9rem;
       }
-      button {
-        background-color: #4caf50;
-        color: white;
-        padding: 0.5rem 1rem;
-        border: none;
-        cursor: pointer;
-        font-size: 0.9rem;
-      }
-      button:hover {
-        background-color: #45a049;
-      }
-      .values {
-        margin-top: 1.5rem;
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
         padding: 1rem;
-        background-color: #f9f9f9;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      }
-      .value-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.5rem 0;
-        border-bottom: 1px solid #e0e0e0;
-        font-size: 0.9rem;
-      }
-      .value-item:last-child {
-        border-bottom: none;
-      }
-      .value-label {
-        font-weight: bold;
-        color: #555;
-      }
-      .value-data {
         color: #333;
       }
-      .charts {
-        margin-top: 2rem;
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
       }
+
+      .header {
+        text-align: center;
+        color: white;
+        margin-bottom: 2rem;
+      }
+
+      .header h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+      }
+
+      .header p {
+        font-size: 1rem;
+        opacity: 0.9;
+      }
+
+      /* 卡片样式 */
+      .card {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      }
+
+      .card-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #667eea;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #f0f0f0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .card-title::before {
+        content: "";
+        width: 4px;
+        height: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 2px;
+      }
+
+      /* 表单网格布局 */
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1rem;
+      }
+
+      /* 顶部配置和控制区域并排布局 */
+      .top-section {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 1rem;
+        margin-bottom: 1rem;
+      }
+
+      .form-section {
+        background: #f8f9fa;
+        padding: 0.3rem;
+        border-radius: 6px;
+      }
+
+      .form-section-title {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #555;
+        margin-bottom: 0.25rem;
+      }
+
+      .form-group {
+        margin-bottom: 0.25rem;
+      }
+
+      .form-group:last-child {
+        margin-bottom: 0;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 0.2rem;
+        font-weight: 500;
+        color: #666;
+        font-size: 0.75rem;
+      }
+
+      input {
+        width: 100%;
+        padding: 0.3rem 0.4rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        transition: all 0.3s;
+        background: white;
+      }
+
+      input:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      /* 按钮样式 */
+      .btn-submit {
+        width: 100%;
+        padding: 0.4rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+      }
+
+      .btn-submit:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+      }
+
+      .btn-submit:active {
+        transform: translateY(0);
+      }
+
+      /* 控制按钮 */
+      .control-section {
+        text-align: center;
+        padding: 0.3rem;
+      }
+
+      .power-btn {
+        width: 130px;
+        height: 130px;
+        border-radius: 50%;
+        border: none;
+        font-size: 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .power-btn::before {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.3);
+        transform: translate(-50%, -50%);
+        transition: width 0.6s, height 0.6s;
+      }
+
+      .power-btn:hover::before {
+        width: 300px;
+        height: 300px;
+      }
+
+      .power-btn.off {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+      }
+
+      .power-btn.on {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          box-shadow: 0 10px 30px rgba(79, 172, 254, 0.4);
+        }
+        50% {
+          box-shadow: 0 10px 40px rgba(79, 172, 254, 0.6);
+        }
+      }
+
+      .status-badge {
+        display: inline-block;
+        margin-top: 1rem;
+        padding: 0.5rem 1.5rem;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.95rem;
+      }
+
+      .status-badge.off {
+        background: #ffebee;
+        color: #c62828;
+      }
+
+      .status-badge.on {
+        background: #e3f2fd;
+        color: #1565c0;
+      }
+
+      /* 时间显示区域 */
+      .time-display {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+      }
+
+      .time-card {
+        padding: 0.4rem;
+        border-radius: 6px;
+        text-align: center;
+        transition: all 0.3s;
+      }
+
+      .time-card.timer {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+      }
+
+      .time-card.running {
+        background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+      }
+
+      .time-label {
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        opacity: 0.8;
+      }
+
+      .timer .time-label {
+        color: #1565c0;
+      }
+
+      .running .time-label {
+        color: #2e7d32;
+      }
+
+      .time-value {
+        font-size: 1rem;
+        font-weight: 700;
+        font-family: "Courier New", monospace;
+        letter-spacing: 2px;
+      }
+
+      .timer .time-value {
+        color: #0d47a1;
+      }
+
+      .running .time-value {
+        color: #1b5e20;
+      }
+
+      /* 数值显示 */
+      .values-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.75rem;
+      }
+
+      .value-item {
+        background: #f8f9fa;
+        padding: 0.75rem;
+        border-radius: 10px;
+        text-align: center;
+        transition: all 0.3s;
+      }
+
+      .value-item:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .value-label {
+        font-size: 0.8rem;
+        color: #888;
+        margin-bottom: 0.3rem;
+        font-weight: 500;
+      }
+
+      .value-data {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #333;
+      }
+
+      /* PID组合样式 */
+      .pid-group {
+        background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+        border: 2px solid #667eea;
+      }
+
+      .pid-values {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .pid-values span {
+        font-size: 0.85rem;
+        color: #666;
+        font-weight: 500;
+      }
+
+      .pid-values b {
+        color: #333;
+        font-size: 1rem;
+        font-weight: 700;
+      }
+
+      /* 图表容器 */
+      .charts-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 0.5rem;
+        margin-top: 1rem;
+      }
+
+      .chart-wrapper {
+        background: white;
+        padding: 0.5rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        height: 400px; /* 增大图表高度 */
+      }
+
       canvas {
-        max-width: 100%;
-        height: auto;
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 400px !important;
+      }
+
+      /* 响应式 */
+      @media (max-width: 768px) {
+        .header h1 {
+          font-size: 1.5rem;
+        }
+
+        .power-btn {
+          width: 100px;
+          height: 100px;
+          font-size: 0.85rem;
+        }
+
+        .time-value {
+          font-size: 0.9rem;
+        }
+
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .top-section {
+          grid-template-columns: 1fr;
+        }
+
+        .pid-values {
+          flex-direction: column;
+          gap: 0.3rem;
+        }
+
+        .pid-values span {
+          font-size: 0.8rem;
+        }
+      }
+
+      /* 隐藏类 */
+      .hidden {
+        display: none !important;
       }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1>发热片项目</h1>
-      <h1>ESP32C3 PID 参数配置</h1>
-
-      <form id="configForm">
-        <div class="form-group">
-          <label for="P_value">P 值:</label>
-          <input type="number" id="P_value" step="0.01" value="0.0" />
-        </div>
-        <div class="form-group">
-          <label for="I_value">I 值:</label>
-          <input type="number" id="I_value" step="0.01" value="0.0" />
-        </div>
-        <div class="form-group">
-          <label for="D_value">D 值:</label>
-          <input type="number" id="D_value" step="0.01" value="0.0" />
-        </div>
-        <div class="form-group">
-          <label for="TARGET_TEMP">目标温度:</label>
-          <input type="number" id="TARGET_TEMP" step="0.1" value="0.0" />
-        </div>
-        <div class="form-group">
-          <label for="FAN_SPEED">风扇转速 (%):</label>
-          <input
-            type="number"
-            id="FAN_SPEED"
-            step="1"
-            min="0"
-            max="100"
-            value="100"
-          />
-        </div>
-        <div class="form-group">
-          <label for="TIMER_HOURS">定时器 (小时):</label>
-          <input
-            type="number"
-            id="TIMER_HOURS"
-            step="0.5"
-            min="0"
-            max="24"
-            value="0.0"
-            placeholder="0表示关闭定时器"
-          />
-        </div>
-        <button type="submit">提交配置</button>
-      </form>
-
-      <div class="form-group">
-        <label for="toggleSwitch">加热/风扇运行开关:</label>
-        <button id="toggleSwitch" style="background-color: red; color: white">
-          点击启动
-        </button>
-        <span>状态: <span id="currentStatus">未知</span></span>
+      <!-- 头部 -->
+      <div class="header">
+        <h1>🔥 发热片智能控制系统</h1>
+        <p>PID控温 · 智能定时 · 实时监控</p>
       </div>
 
-      <div
-        class="form-group"
-        id="timerDisplay"
-        style="
-          display: none;
-          margin-top: 1rem;
-          padding: 1rem;
-          background-color: #e3f2fd;
-          border-radius: 8px;
-        "
-      >
-        <label>⏱️ 定时器倒计时:</label>
-        <div
-          style="
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #1976d2;
-            margin-top: 0.5rem;
-          "
-          id="timerCountdown"
-        >
-          00:00:00
-        </div>
-      </div>
+      <!-- 顶部区域：配置和控制并排 -->
+      <div class="top-section">
+        <!-- 配置卡片 -->
+        <div class="card">
+          <div class="card-title">⚙️ 系统配置</div>
+          <form id="configForm">
+            <div class="form-grid">
+              <!-- PID参数 -->
+              <div class="form-section">
+                <div class="form-section-title">📊 PID参数</div>
+                <div class="form-group">
+                  <label for="P_value">比例系数 (P)</label>
+                  <input
+                    type="number"
+                    id="P_value"
+                    step="0.01"
+                    value="0.0"
+                    placeholder="0.0"
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="I_value">积分系数 (I)</label>
+                  <input
+                    type="number"
+                    id="I_value"
+                    step="0.01"
+                    value="0.0"
+                    placeholder="0.0"
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="D_value">微分系数 (D)</label>
+                  <input
+                    type="number"
+                    id="D_value"
+                    step="0.01"
+                    value="0.0"
+                    placeholder="0.0"
+                  />
+                </div>
+              </div>
 
-      <div
-        class="form-group"
-        id="runningTimeDisplay"
-        style="
-          display: none;
-          margin-top: 1rem;
-          padding: 1rem;
-          background-color: #e8f5e9;
-          border-radius: 8px;
-        "
-      >
-        <label>⏰ 系统已运行时间:</label>
-        <div
-          style="
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #2e7d32;
-            margin-top: 0.5rem;
-          "
-          id="runningTime"
-        >
-          00:00:00
-        </div>
-      </div>
+              <!-- 温度和风扇 -->
+              <div class="form-section">
+                <div class="form-section-title">🌡️ 温度与风扇</div>
+                <div class="form-group">
+                  <label for="TARGET_TEMP">目标温度 (°C)</label>
+                  <input
+                    type="number"
+                    id="TARGET_TEMP"
+                    step="0.1"
+                    value="0.0"
+                    placeholder="35.0"
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="FAN_SPEED">风扇转速 (%)</label>
+                  <input
+                    type="number"
+                    id="FAN_SPEED"
+                    step="1"
+                    min="0"
+                    max="100"
+                    value="100"
+                    placeholder="100"
+                  />
+                </div>
+              </div>
 
-      <div class="values">
-        <h3>当前值:</h3>
-        <div class="value-item">
-          <span class="value-label">P:</span>
-          <span class="value-data" id="current_P">0.00</span>
+              <!-- 定时器 -->
+              <div class="form-section">
+                <div class="form-section-title">⏱️ 定时设置</div>
+                <div class="form-group">
+                  <label for="TIMER_HOURS">定时时长 (小时)</label>
+                  <input
+                    type="number"
+                    id="TIMER_HOURS"
+                    step="0.5"
+                    min="0"
+                    max="24"
+                    value="0.0"
+                    placeholder="0表示关闭定时器"
+                  />
+                </div>
+              </div>
+            </div>
+            <button type="submit" class="btn-submit">💾 保存配置</button>
+          </form>
         </div>
-        <div class="value-item">
-          <span class="value-label">I:</span>
-          <span class="value-data" id="current_I">0.00</span>
-        </div>
-        <div class="value-item">
-          <span class="value-label">D:</span>
-          <span class="value-data" id="current_D">0.00</span>
-        </div>
-        <div class="value-item">
-          <span class="value-label">目标温度:</span>
-          <span class="value-data" id="current_TARGET_TEMP">0.0</span>
-        </div>
-        <div class="value-item">
-          <span class="value-label">NTC 温度:</span>
-          <span class="value-data" id="current_ntcTemp">0.0</span>
-        </div>
-        <div class="value-item">
-          <span class="value-label">PWM 百分比:</span>
-          <span class="value-data" id="current_pwmPercent">0.0%</span>
-        </div>
-        <div class="value-item">
-          <span class="value-label">DHT 温度:</span>
-          <span class="value-data" id="current_dhtTemp">0.0</span>
-        </div>
-        <div class="value-item">
-          <span class="value-label">DHT 湿度:</span>
-          <span class="value-data" id="current_dhtHumidity">0.0%</span>
-        </div>
-        <div class="value-item">
-          <span class="value-label">风扇转速:</span>
-          <span class="value-data" id="current_fanSpeed">0%</span>
+
+        <!-- 控制卡片 -->
+        <div class="card">
+          <div class="card-title">🎮 系统控制</div>
+          <div class="control-section">
+            <button id="toggleSwitch" class="power-btn off">
+              <span id="btnText">点击启动</span>
+            </button>
+            <br />
+            <span
+              id="currentStatus"
+              class="status-badge off"
+              style="display: inline-block"
+              >系统已关闭</span
+            >
+          </div>
+
+          <!-- 时间显示 -->
+          <div class="time-display">
+            <div class="time-card timer hidden" id="timerDisplay">
+              <div class="time-label">⏱️ 定时倒计时</div>
+              <div class="time-value" id="timerCountdown">00:00:00</div>
+            </div>
+            <div class="time-card running hidden" id="runningTimeDisplay">
+              <div class="time-label">⏰ 系统运行时间</div>
+              <div class="time-value" id="runningTime">00:00:00</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="charts">
-        <canvas id="temperatureChart" width="400" height="200"></canvas>
-        <canvas id="humidityChart" width="400" height="200"></canvas>
+      <!-- 监控数据卡片 -->
+      <div class="card">
+        <div class="card-title">📈 实时监控</div>
+        <div class="values-grid">
+          <div class="value-item pid-group">
+            <!-- <div class="value-label"></div> -->
+            <div class="pid-values">
+              <span>P: <b id="current_P">0.00</b></span>
+              <span>I: <b id="current_I">0.00</b></span>
+              <span>D: <b id="current_D">0.00</b></span>
+            </div>
+          </div>
+          <div class="value-item">
+            <div class="value-label">目标温度</div>
+            <div class="value-data" id="current_TARGET_TEMP">0.0°C</div>
+          </div>
+          <div class="value-item">
+            <div class="value-label">NTC温度</div>
+            <div class="value-data" id="current_ntcTemp">0.0°C</div>
+          </div>
+          <div class="value-item">
+            <div class="value-label">DHT温度</div>
+            <div class="value-data" id="current_dhtTemp">0.0°C</div>
+          </div>
+          <div class="value-item">
+            <div class="value-label">DHT湿度</div>
+            <div class="value-data" id="current_dhtHumidity">0.0%</div>
+          </div>
+          <div class="value-item">
+            <div class="value-label">PWM输出</div>
+            <div class="value-data" id="current_pwmPercent">0.0%</div>
+          </div>
+          <div class="value-item">
+            <div class="value-label">风扇转速</div>
+            <div class="value-data" id="current_fanSpeed">0%</div>
+          </div>
+        </div>
+
+        <!-- 图表 -->
+        <div class="charts-container">
+          <div class="chart-wrapper">
+            <canvas id="temperatureChart"></canvas>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="humidityChart"></canvas>
+          </div>
+        </div>
       </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
       // ========== 定时器相关变量 ==========
-      let lastTimerRemaining = -1;  // 记录上次的后端倒计时值
+      let lastTimerRemaining = -1;
 
       // 格式化时间显示 HH:MM:SS
       function formatTime(totalSeconds) {
@@ -242,10 +603,11 @@
 
       // 更新定时器显示
       function updateTimerDisplay(seconds) {
-        document.getElementById("timerCountdown").textContent = formatTime(seconds);
+        document.getElementById("timerCountdown").textContent =
+          formatTime(seconds);
       }
 
-      // 提交配置(PID + 风扇转速 + 定时器)
+      // 提交配置
       document
         .getElementById("configForm")
         .addEventListener("submit", async function (e) {
@@ -257,7 +619,6 @@
           const FAN_SPEED = document.getElementById("FAN_SPEED").value;
           const TIMER_HOURS = document.getElementById("TIMER_HOURS").value;
 
-          // 手动构建 JSON 字符串（确保无空格，与后端 sscanf 格式严格匹配）
           const jsonBody = `{"P":${parseFloat(P)},"I":${parseFloat(
             I
           )},"D":${parseFloat(D)},"TARGET_TEMP":${parseFloat(
@@ -266,9 +627,6 @@
             TIMER_HOURS
           )}}`;
 
-          console.log("发送到后端的 JSON:", jsonBody);
-
-          // 单次请求提交所有配置
           const response = await fetch("/config", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -276,9 +634,9 @@
           });
 
           if (response.ok) {
-            alert("配置成功!");
+            alert("✅ 配置保存成功！");
           } else {
-            alert("配置失败!");
+            alert("❌ 配置保存失败！");
           }
         });
 
@@ -286,18 +644,20 @@
         labels: [],
         datasets: [
           {
-            label: "ADC 温度",
+            label: "NTC温度",
             data: [],
             borderColor: "rgba(255, 99, 132, 1)",
             backgroundColor: "rgba(255, 99, 132, 0.2)",
             fill: true,
+            tension: 0.4,
           },
           {
-            label: "DHT 温度",
+            label: "DHT温度",
             data: [],
             borderColor: "rgba(54, 162, 235, 1)",
             backgroundColor: "rgba(54, 162, 235, 0.2)",
             fill: true,
+            tension: 0.4,
           },
         ],
       };
@@ -306,11 +666,12 @@
         labels: [],
         datasets: [
           {
-            label: "DHT 湿度",
+            label: "DHT湿度",
             data: [],
             borderColor: "rgba(75, 192, 192, 1)",
             backgroundColor: "rgba(75, 192, 192, 0.2)",
             fill: true,
+            tension: 0.4,
           },
         ],
       };
@@ -322,9 +683,33 @@
           data: temperatureData,
           options: {
             responsive: true,
+            maintainAspectRatio: false,
             plugins: {
               legend: {
                 position: "top",
+                labels: {
+                  font: {
+                    size: 10,
+                    family: "'Segoe UI', 'Microsoft YaHei', sans-serif",
+                  },
+                  usePointStyle: true,
+                  boxWidth: 6,
+                  padding: 10,
+                  borderRadius: 4,
+                },
+              },
+              title: {
+                display: true,
+                text: "温度曲线",
+                font: {
+                  size: 12,
+                  weight: "600",
+                  family: "'Segoe UI', 'Microsoft YaHei', sans-serif",
+                },
+                padding: {
+                  top: 5,
+                  bottom: 10,
+                },
               },
             },
             scales: {
@@ -332,12 +717,28 @@
                 title: {
                   display: true,
                   text: "时间",
+                  font: {
+                    size: 10,
+                  },
+                },
+                ticks: {
+                  font: {
+                    size: 9,
+                  },
                 },
               },
               y: {
                 title: {
                   display: true,
                   text: "温度 (°C)",
+                  font: {
+                    size: 10,
+                  },
+                },
+                ticks: {
+                  font: {
+                    size: 9,
+                  },
                 },
               },
             },
@@ -352,9 +753,33 @@
           data: humidityData,
           options: {
             responsive: true,
+            maintainAspectRatio: false,
             plugins: {
               legend: {
                 position: "top",
+                labels: {
+                  font: {
+                    size: 10,
+                    family: "'Segoe UI', 'Microsoft YaHei', sans-serif",
+                  },
+                  usePointStyle: true,
+                  boxWidth: 6,
+                  padding: 10,
+                  borderRadius: 4,
+                },
+              },
+              title: {
+                display: true,
+                text: "湿度曲线",
+                font: {
+                  size: 12,
+                  weight: "600",
+                  family: "'Segoe UI', 'Microsoft YaHei', sans-serif",
+                },
+                padding: {
+                  top: 5,
+                  bottom: 10,
+                },
               },
             },
             scales: {
@@ -362,12 +787,28 @@
                 title: {
                   display: true,
                   text: "时间",
+                  font: {
+                    size: 10,
+                  },
+                },
+                ticks: {
+                  font: {
+                    size: 9,
+                  },
                 },
               },
               y: {
                 title: {
                   display: true,
                   text: "湿度 (%)",
+                  font: {
+                    size: 10,
+                  },
+                },
+                ticks: {
+                  font: {
+                    size: 9,
+                  },
                 },
               },
             },
@@ -382,13 +823,13 @@
 
         const now = new Date().toLocaleTimeString();
 
-        if (temperatureData.labels.length > 1000) {
+        if (temperatureData.labels.length > 100) {
           temperatureData.labels.shift();
           temperatureData.datasets[0].data.shift();
           temperatureData.datasets[1].data.shift();
         }
 
-        if (humidityData.labels.length > 1000) {
+        if (humidityData.labels.length > 100) {
           humidityData.labels.shift();
           humidityData.datasets[0].data.shift();
         }
@@ -407,47 +848,49 @@
         document.getElementById("current_I").textContent = data.I.toFixed(2);
         document.getElementById("current_D").textContent = data.D.toFixed(2);
         document.getElementById("current_TARGET_TEMP").textContent =
-          data.TARGET_TEMP.toFixed(1);
+          data.TARGET_TEMP.toFixed(1) + "°C";
         document.getElementById("current_ntcTemp").textContent =
-          data.ntcTemp.toFixed(1);
-        document.getElementById(
-          "current_pwmPercent"
-        ).textContent = `${data.pwmPercent.toFixed(1)}%`;
+          data.ntcTemp.toFixed(1) + "°C";
+        document.getElementById("current_pwmPercent").textContent =
+          data.pwmPercent.toFixed(1) + "%";
         document.getElementById("current_dhtTemp").textContent =
-          data.dhtTemp.toFixed(1);
-        document.getElementById(
-          "current_dhtHumidity"
-        ).textContent = `${data.dhtHumidity.toFixed(1)}%`;
-        document.getElementById(
-          "current_fanSpeed"
-        ).textContent = `${data.fanSpeed.toFixed(0)}%`;
+          data.dhtTemp.toFixed(1) + "°C";
+        document.getElementById("current_dhtHumidity").textContent =
+          data.dhtHumidity.toFixed(1) + "%";
+        document.getElementById("current_fanSpeed").textContent =
+          data.fanSpeed.toFixed(0) + "%";
 
         // 更新系统运行时间显示
         if (data.systemRunningSeconds > 0) {
-          document.getElementById("runningTime").textContent =
-            formatTime(data.systemRunningSeconds);
-          document.getElementById("runningTimeDisplay").style.display = "block";
+          document.getElementById("runningTime").textContent = formatTime(
+            data.systemRunningSeconds
+          );
+          document
+            .getElementById("runningTimeDisplay")
+            .classList.remove("hidden");
         } else {
-          document.getElementById("runningTimeDisplay").style.display = "none";
+          document.getElementById("runningTimeDisplay").classList.add("hidden");
         }
 
-        // 更新定时器倒计时显示（直接使用后端返回的值，不再使用本地倒计时）
-        if (data.timerRemaining > 0) {
-          document.getElementById("timerDisplay").style.display = "block";
-          updateTimerDisplay(data.timerRemaining);
-          lastTimerRemaining = data.timerRemaining;
-        } else if (data.timerRemaining === 0) {
-          // 定时器已到期
-          if (lastTimerRemaining > 0) {
-            // 从有值变为0，说明定时器刚到期，需要自动关闭系统
-            toggleSystem();
-            lastTimerRemaining = 0;
+        // 更新定时器倒计时显示
+        // 如果配置了定时器（timerHours > 0）并且系统已启动，显示倒计时
+        if (data.timerHours > 0 && isOPEN) {
+          if (data.timerRemaining >= 0) {
+            document.getElementById("timerDisplay").classList.remove("hidden");
+            updateTimerDisplay(data.timerRemaining);
+            lastTimerRemaining = data.timerRemaining;
           }
-          document.getElementById("timerDisplay").style.display = "none";
         } else {
-          // timerRemaining < 0 或未定义，隐藏倒计时
-          document.getElementById("timerDisplay").style.display = "none";
-          lastTimerRemaining = -1;
+          document.getElementById("timerDisplay").classList.add("hidden");
+          if (!isOPEN) {
+            lastTimerRemaining = -1;
+          }
+        }
+
+        // 如果倒计时结束，自动关闭系统
+        if (data.timerRemaining === 0 && lastTimerRemaining > 0) {
+          toggleSystem();
+          lastTimerRemaining = 0;
         }
       }
 
@@ -468,40 +911,49 @@
       // 调用函数设置默认值
       setDefaultValues();
 
-      // 定时刷新（统一在 getCurrentValues 中处理所有状态）
-      getCurrentValues();
+      // 定时刷新（但不立即调用，等待页面加载完成后由 getToggleState 触发）
       setInterval(getCurrentValues, 1000);
 
       const toggleButton = document.getElementById("toggleSwitch");
+      const btnText = document.getElementById("btnText");
       let isOPEN = false;
 
       // 更新UI状态的函数
       function updateUIState() {
-        toggleButton.style.backgroundColor = isOPEN ? "green" : "red";
-        toggleButton.textContent = isOPEN
-          ? "正在运行点击关闭"
-          : "已关闭点击启动";
-        document.getElementById("currentStatus").textContent = isOPEN
-          ? "正在运行"
-          : "加热烘干模组关闭";
+        const statusBadge = document.getElementById("currentStatus");
+        if (isOPEN) {
+          toggleButton.classList.remove("off");
+          toggleButton.classList.add("on");
+          btnText.textContent = "正在运行";
+          statusBadge.textContent = "系统运行中";
+          statusBadge.classList.remove("off");
+          statusBadge.classList.add("on");
+        } else {
+          toggleButton.classList.remove("on");
+          toggleButton.classList.add("off");
+          btnText.textContent = "点击启动";
+          statusBadge.textContent = "系统已关闭";
+          statusBadge.classList.remove("on");
+          statusBadge.classList.add("off");
+        }
       }
 
-      // 封装切换系统函数，供定时器调用
+      // 封装切换系统函数
       async function toggleSystem() {
         const response = await fetch("/toggle", { method: "POST" });
         if (response.ok) {
           isOPEN = !isOPEN;
           updateUIState();
 
-          // 系统关闭时隐藏运行时间
           if (!isOPEN) {
-            document.getElementById("runningTimeDisplay").style.display = "none";
-            document.getElementById("timerDisplay").style.display = "none";
+            document
+              .getElementById("runningTimeDisplay")
+              .classList.add("hidden");
+            document.getElementById("timerDisplay").classList.add("hidden");
             lastTimerRemaining = -1;
           }
-          // 系统启动时，显示区域由 getCurrentValues() 统一管理
         } else {
-          alert("切换失败！");
+          alert("❌ 切换失败！");
         }
       }
 
@@ -514,8 +966,10 @@
           const data = await response.json();
           isOPEN = data.status === "OPEN";
           updateUIState();
+          // 获取到开关状态后，立即更新时间显示
+          await getCurrentValues();
         } else {
-          alert("无法获取开关状态！");
+          alert("❌ 无法获取开关状态！");
         }
       }
 
