@@ -1,5 +1,4 @@
 #include "simple_wifi_sta.h"
-#include "wifi_provisioning.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,8 +20,8 @@
 
 // 请根据你家路由器修改下面两个宏：SSID 和 PASSWORD
 // 把这两个改成你的 WiFi 名称和密码后再编译烧录
-#define DEFAULT_WIFI_SSID           "x"
-#define DEFAULT_WIFI_PASSWORD       "x"
+#define DEFAULT_WIFI_SSID           "dm2G"
+#define DEFAULT_WIFI_PASSWORD       "88888888dmdmdm"
 
 // 日志 TAG，用于在串口输出中区分本模块的日志
 static const char *TAG = "wifi";
@@ -540,28 +539,6 @@ esp_err_t wifi_sta_init(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());       //创建一个默认系统事件调度循环，之后可以注册回调函数来处理系统的一些事件
     esp_netif_create_default_wifi_sta();    //使用默认配置创建STA对象
 
-    // ========== 配网检测逻辑 ==========
-    if (!wifi_provisioning_has_config()) {
-        ESP_LOGI(TAG, "========================================");
-        ESP_LOGI(TAG, "未检测到WiFi配置，进入配网模式...");
-        ESP_LOGI(TAG, "========================================");
-
-        esp_err_t err = wifi_provisioning_start();
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "配网失败: %s", esp_err_to_name(err));
-            ESP_LOGE(TAG, "将继续尝试连接默认WiFi（如果已硬编码）");
-        } else {
-            ESP_LOGI(TAG, "========================================");
-            ESP_LOGI(TAG, "配网成功！设备将重启以应用新配置...");
-            ESP_LOGI(TAG, "========================================");
-            esp_restart();  // 重启设备以应用新WiFi配置
-            return ESP_OK;
-        }
-    } else {
-        ESP_LOGI(TAG, "检测到已保存的WiFi配置，跳过配网模式");
-    }
-    // ========== 配网检测结束 ==========
-
     // 初始化WIFI
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -570,31 +547,27 @@ esp_err_t wifi_sta_init(void)
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT,ESP_EVENT_ANY_ID,&event_handler,NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT,IP_EVENT_STA_GOT_IP,&event_handler,NULL));
 
-    // WIFI配置 - 从NVS加载（必须配网，无硬编码回退）
-    wifi_config_t wifi_config = {0};
-    char saved_ssid[64] = {0};
-    char saved_password[64] = {0};
+    // WIFI配置
+    wifi_config_t wifi_config =
+    {
+        .sta =
+        {
+            .ssid = DEFAULT_WIFI_SSID,              //WIFI的SSID
+            .password = DEFAULT_WIFI_PASSWORD,      //WIFI密码
+	        .threshold.authmode = WIFI_AUTH_WPA2_PSK,   //加密方式
 
-    if (wifi_provisioning_load_config(saved_ssid, saved_password,
-                                       sizeof(saved_ssid), sizeof(saved_password)) == ESP_OK) {
-        // 从NVS加载成功
-        strncpy((char *)wifi_config.sta.ssid, saved_ssid, sizeof(wifi_config.sta.ssid));
-        strncpy((char *)wifi_config.sta.password, saved_password, sizeof(wifi_config.sta.password));
-        wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-        wifi_config.sta.pmf_cfg.capable = true;
-        wifi_config.sta.pmf_cfg.required = false;
+            .pmf_cfg =
+            {
+                .capable = true,
+                .required = false
+            },
+        },
+    };
 
-        ESP_LOGI(TAG, "使用NVS中保存的WiFi配置: SSID=%s", saved_ssid);
-
-        // 启动WIFI
-        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-        ESP_ERROR_CHECK(esp_wifi_start());
-    } else {
-        ESP_LOGE(TAG, "错误：未找到WiFi配置，请重新进入配网模式！");
-        ESP_LOGE(TAG, "提示：擦除Flash后重新烧录可触发配网模式");
-        return ESP_FAIL;
-    }
+    // 启动WIFI
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );         //设置工作模式为STA
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );   //设置wifi配置
+    ESP_ERROR_CHECK(esp_wifi_start() );                         //启动WIFI
 
     // 上电时强制重置为关闭状态，防止断电恢复后热惯性导致过热
     ESP_LOGI(TAG, "========== 上电初始化开始 ==========");
@@ -621,14 +594,5 @@ esp_err_t wifi_sta_init(void)
     ESP_LOGI(TAG, "🔒 已强制保存关闭状态到NVS,确保上电安全");
 
     ESP_LOGI(TAG, "wifi_init_sta finished.");
-
-    // 启动按键检测任务（延迟2秒启动，避免启动时误触）
-    xTaskCreate((void (*)(void *))wifi_provisioning_check_button,
-                "button_check",
-                2048,
-                NULL,
-                1,  // 最低优先级
-                NULL);
-
     return ESP_OK;
 }

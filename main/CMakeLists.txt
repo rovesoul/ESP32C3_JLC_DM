@@ -1,4 +1,4 @@
-idf_component_register(SRCS "NtcAdcScreenDHT22.c" "NtcAdcScreenDHT22.c" "ntc.c" "dht22.c" "NtcAdcScreenDHT22.c" "OLED.c" "OLED_Data.c" "simple_wifi_sta.c"
+idf_component_register(SRCS "NtcAdcScreenDHT22.c" "ntc.c" "dht22.c" "OLED.c" "OLED_Data.c" "simple_wifi_sta.c" "wifi_provisioning.c"
                     REQUIRES
                      driver
                      esp_driver_ledc
