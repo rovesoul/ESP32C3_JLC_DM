@@ -602,92 +602,92 @@ void draw_temp_curve_only(void)
 }
 
 
+// ========== 绘制右侧文字信息区域 ==========
+/**
+ * @brief 绘制右侧文字信息（温度、湿度、PID参数等）
+ * @note 两种显示模式共用此函数
+ */
+void draw_right_text_area(void)
+{
+    char buffer[32];
+
+    // 目标温度
+    snprintf(buffer, sizeof(buffer), "SET:%.1fC", heater_pid.target_temp);
+    OLED_ShowString(TEXT_START_X, 0, buffer, OLED_6X8);
+
+    // PID参数
+    snprintf(buffer, sizeof(buffer), "%.1f %.1f %.1f", PID_KP, PID_KI, PID_KD);
+    OLED_ShowString(TEXT_START_X, 10, buffer, OLED_6X8);
+
+    // NTC温度
+    snprintf(buffer, sizeof(buffer), "NTC:%.1fC", ntcTemp);
+    OLED_ShowString(TEXT_START_X, 23, buffer, OLED_6X8);
+
+    // DHT22温度
+    snprintf(buffer, sizeof(buffer), "DHT:%.1fC", dhtTemp);
+    OLED_ShowString(TEXT_START_X, 33, buffer, OLED_6X8);
+
+    // 湿度
+    snprintf(buffer, sizeof(buffer), "HUM:%.1f%%", dhtHumidity);
+    OLED_ShowString(TEXT_START_X, 43, buffer, OLED_6X8);
+
+    // PWM输出百分比
+    float pwm_percent = (heater_pid.pwm_duty * 100.0f) / MAX_PWM_DUTY;
+    snprintf(buffer, sizeof(buffer), "PWM:%.1f%%", pwm_percent);
+    OLED_ShowString(TEXT_START_X, 56, buffer, OLED_6X8);
+}
+
 // ========== 统一OLED显示任务 ==========
 void oled_display_task(void *pvParameter)
 {
-    char buffer[32];
     bool first_run = true;
-    
+
     while(1) {
         xSemaphoreTake(oled_mutex, portMAX_DELAY);
-        
+
 #if DISPLAY_MODE == 0
         // ========== 模式0：曲线+文字 ==========
-        
+
         // 只清除右侧文字区域
         OLED_ClearArea(TEXT_START_X, 0, 128, 64);
-        
-        // 右侧文字区域
-        snprintf(buffer, sizeof(buffer), "SET:%.1fC", heater_pid.target_temp);
-        OLED_ShowString(TEXT_START_X, 0, buffer, OLED_6X8);
-        
-        snprintf(buffer, sizeof(buffer), "%.1f %.1f %.1f", PID_KP, PID_KI, PID_KD);
-        OLED_ShowString(TEXT_START_X, 10, buffer, OLED_6X8);
-        
-        snprintf(buffer, sizeof(buffer), "NTC:%.1fC", ntcTemp);
-        OLED_ShowString(TEXT_START_X, 23, buffer, OLED_6X8);
-        
-        snprintf(buffer, sizeof(buffer), "DHT:%.1fC", dhtTemp);
-        OLED_ShowString(TEXT_START_X, 33, buffer, OLED_6X8);
-        
-        snprintf(buffer, sizeof(buffer), "HUM:%.1f%%", dhtHumidity);
-        OLED_ShowString(TEXT_START_X, 43, buffer, OLED_6X8);
-        
-        float pwm_percent = (heater_pid.pwm_duty * 100.0f) / MAX_PWM_DUTY;
-        snprintf(buffer, sizeof(buffer), "PWM:%.1f%%", pwm_percent);
-        OLED_ShowString(TEXT_START_X, 56, buffer, OLED_6X8);
-        
+
+        // 绘制右侧文字信息
+        draw_right_text_area();
+
         // 左侧温度曲线区
         if (first_run) {
             draw_static_frame();
             first_run = false;
         }
-        
+
         OLED_ClearArea(CURVE_START_X + 1, 1, 62, 62);
-        
+
         uint8_t target_y = (uint8_t)(63 - ((TARGET_TEMP - TEMP_MIN) / (TEMP_MAX - TEMP_MIN) * 62));
         for (uint8_t x = CURVE_START_X + 1; x < CURVE_START_X+CURVE_WIDTH; x++) {
             if ((x - CURVE_START_X) % 4 < 2) {
                 OLED_DrawPoint(x, target_y);
             }
         }
-        
+
         draw_temp_curve_only();
-        
+
 #elif DISPLAY_MODE == 1
         // ========== 模式1：仪表盘+文字 ==========
-        
+
         // 清除整个屏幕（仪表盘需要重绘）
         OLED_Clear();
-        
+
         // 左侧绘制仪表盘
         draw_gauge(ntcTemp, heater_pid.target_temp);
-        
-        // 右侧文字区域（与模式0相同）
-        snprintf(buffer, sizeof(buffer), "SET:%.1fC", heater_pid.target_temp);
-        OLED_ShowString(TEXT_START_X, 0, buffer, OLED_6X8);
-        
-        snprintf(buffer, sizeof(buffer), "%.1f %.1f %.1f", PID_KP, PID_KI, PID_KD);
-        OLED_ShowString(TEXT_START_X, 10, buffer, OLED_6X8);
-        
-        snprintf(buffer, sizeof(buffer), "NTC:%.1fC", ntcTemp);
-        OLED_ShowString(TEXT_START_X, 23, buffer, OLED_6X8);
-        
-        snprintf(buffer, sizeof(buffer), "DHT:%.1fC", dhtTemp);
-        OLED_ShowString(TEXT_START_X, 33, buffer, OLED_6X8);
-        
-        snprintf(buffer, sizeof(buffer), "HUM:%.1f%%", dhtHumidity);
-        OLED_ShowString(TEXT_START_X, 43, buffer, OLED_6X8);
-        
-        float pwm_percent = (heater_pid.pwm_duty * 100.0f) / MAX_PWM_DUTY;
-        snprintf(buffer, sizeof(buffer), "PWM:%.1f%%", pwm_percent);
-        OLED_ShowString(TEXT_START_X, 56, buffer, OLED_6X8);
-        
+
+        // 绘制右侧文字信息
+        draw_right_text_area();
+
 #endif
-        
+
         OLED_Update();
         xSemaphoreGive(oled_mutex);
-        
+
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
