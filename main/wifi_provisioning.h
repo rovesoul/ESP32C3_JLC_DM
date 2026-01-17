@@ -12,6 +12,13 @@
 bool wifi_provisioning_has_config(void);
 
 /**
+ * @brief 检查是否处于配网模式
+ * @return true 如果当前处于配网模式
+ * @return false 如果当前不处于配网模式
+ */
+bool wifi_provisioning_is_active(void);
+
+/**
  * @brief 从NVS加载WiFi凭据
  * @param ssid 输出参数，存储SSID
  * @param password 输出参数，存储密码

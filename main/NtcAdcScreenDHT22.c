@@ -11,8 +11,10 @@
  * 【√】增加风扇控制
  * 【√】增加风扇实际速度显示
  * 【√】配置联网模式
- * 【】修改仪表盘为半圆，并且显示网址
+ * 【】配网模式的oled显示
+ * 【√】修改仪表盘为半圆，并且显示
  * 【】倒计时结束，不关机
+ * 【】关机一定时间后不断wifi待机
  * 【】阶段优化冗余代码
  * 【】拆分代码
  * 【】ui风格切换（黑金、夜晚、白天、目前的）
@@ -34,6 +36,7 @@
 #include "esp_err.h"
 #include "OLED.h"
 #include "simple_wifi_sta.h"
+#include "wifi_provisioning.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 
@@ -821,6 +824,13 @@ void oled_display_task(void *pvParameter)
     bool first_run = true;
 
     while(1) {
+        // ========== 检查是否处于配网模式 ==========
+        if (wifi_provisioning_is_active()) {
+            // 配网模式下,不更新显示(由wifi_provisioning.c控制OLED)
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
+
         xSemaphoreTake(oled_mutex, portMAX_DELAY);
 
 #if DISPLAY_MODE == 0
@@ -1016,8 +1026,16 @@ void app_main(void)
     } else {
         ESP_LOGE(TAG, "🔍 [NVS检查] 无法打开 NVS");
     }
-    //wifi STA工作模式初始化
-    wifi_sta_init();
+
+    // ========== 先初始化OLED(配网模式需要用到) ==========
+    // 创建信号量
+    dht22_mutex = xSemaphoreCreateMutex();
+    oled_mutex = xSemaphoreCreateMutex();
+
+    // 初始化OLED
+    ESP_LOGI(screenTAG, "初始化OLED...");
+    OLED_Init(OLED_I2C, OLED_ADD, OLED_SCL, OLED_SDA, OLED_SPEED);
+    OLED_Clear();
 
     // 初始化呼吸灯
     LEDbubble_ledc_init();
@@ -1027,25 +1045,20 @@ void app_main(void)
 
     // 初始化加热片
     heater_ledc_init();
-    
+
     // 初始化PID
     pid_init(&heater_pid, TARGET_TEMP, PID_KP, PID_KI, PID_KD);
-    
+
     // 初始化NTC
     temp_ntc_init();
-    
+
     // 初始化DHT22
     setDHTgpio(GPIO_NUM_0);
-    
-    // 创建信号量
-    dht22_mutex = xSemaphoreCreateMutex();
-    oled_mutex = xSemaphoreCreateMutex();
-    
-    // 初始化OLED
-    ESP_LOGI(screenTAG, "初始化OLED...");
-    OLED_Init(OLED_I2C, OLED_ADD, OLED_SCL, OLED_SDA, OLED_SPEED);
-    OLED_Clear();
-    
+
+    // ========== 后初始化WiFi(可能进入配网模式,需要OLED已初始化) ==========
+    //wifi STA工作模式初始化
+    wifi_sta_init();
+
     // 创建任务
     xTaskCreatePinnedToCore(change_duty, "led_breath", 2048, NULL, 2, NULL, 0);
     xTaskCreatePinnedToCore(tesk_dht22, "dht22", 2048, NULL, 3, NULL, 0);

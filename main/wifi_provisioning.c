@@ -1,4 +1,5 @@
 #include "wifi_provisioning.h"
+#include "OLED.h"
 #include "string.h"
 #include "stdio.h"
 #include "freertos/FreeRTOS.h"
@@ -15,6 +16,7 @@
 #include "esp_rom_sys.h"
 #include "driver/gpio.h"
 #include "lwip/inet.h"
+#include "lwip/ip_addr.h"
 
 // NVS 命名空间和键名
 #define NVS_NAMESPACE "wifi_config"
@@ -39,6 +41,9 @@ static const char *TAG = "wifi_prov";
 static EventGroupHandle_t s_wifi_event_group;
 static httpd_handle_t s_provisioning_server = NULL;
 
+// 全局标志: 是否处于配网模式
+static bool s_is_provisioning_mode = false;
+
 /**
  * @brief 生成配网热点名称（添加MAC后缀以区分设备）
  */
@@ -47,6 +52,42 @@ static void generate_provisioning_ssid(char *ssid, size_t max_len) {
     esp_wifi_get_mac(ESP_IF_WIFI_STA, mac);
     snprintf(ssid, max_len, "%s_%02X%02X%02X",
              PROVISIONING_SSID_PREFIX, mac[3], mac[4], mac[5]);
+}
+
+/**
+ * @brief 显示配网模式OLED界面(4行内容)
+ * @param ap_ssid 配网热点名称
+ * @param ap_password 配网热点密码
+ * @param ip_address 配网IP地址
+ */
+static void display_provisioning_interface(const char *ap_ssid, const char *ap_password, const char *ip_address) {
+    // 清屏
+    OLED_Clear();
+
+    // 第1行: "SET YOUR WIFI" (居中显示)
+    char line1[] = "SET YOUR WIFI";
+    int16_t x1 = 64 - (strlen(line1) * 6) / 2;  // 居中计算 (字体宽度6像素)
+    OLED_ShowString(x1 > 0 ? x1 : 0, 0, line1, OLED_6X8);
+
+    // 第2行: WiFi SSID (左对齐)
+    char line2[32];
+    snprintf(line2, sizeof(line2), "SSID:%s", ap_ssid);
+    OLED_ShowString(0, 16, line2, OLED_6X8);
+
+    // 第3行: WiFi Password (左对齐)
+    char line3[32];
+    snprintf(line3, sizeof(line3), "PASS:%s", ap_password);
+    OLED_ShowString(0, 32, line3, OLED_6X8);
+
+    // 第4行: IP Address (左对齐)
+    char line4[32];
+    snprintf(line4, sizeof(line4), "IP:%s", ip_address);
+    OLED_ShowString(0, 48, line4, OLED_6X8);
+
+    // 更新显示
+    OLED_Update();
+
+    ESP_LOGI(TAG, "OLED配网界面已显示");
 }
 
 /**
@@ -62,6 +103,14 @@ bool wifi_provisioning_has_config(void) {
         return (err == ESP_OK);
     }
     return false;
+}
+
+/**
+ * @brief 检查是否处于配网模式
+ * @return true 如果当前处于配网模式
+ */
+bool wifi_provisioning_is_active(void) {
+    return s_is_provisioning_mode;
 }
 
 /**
@@ -388,6 +437,7 @@ static void start_provisioning_server(void) {
  */
 esp_err_t wifi_provisioning_start(void) {
     s_wifi_event_group = xEventGroupCreate();
+    s_is_provisioning_mode = true;  // 设置配网模式标志
 
     // 创建AP接口的netif（重要！）
     esp_netif_create_default_wifi_ap();
@@ -440,6 +490,9 @@ esp_err_t wifi_provisioning_start(void) {
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "Waiting for user configuration (timeout: %d ms)...", PROVISIONING_TIMEOUT_MS);
 
+    // ========== 显示OLED配网界面 ==========
+    display_provisioning_interface(ap_ssid, PROVISIONING_PASSWORD, "192.168.4.1");
+
     // 等待配网完成或超时
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
                                           WIFI_PROV_DONE_BIT,
@@ -455,10 +508,12 @@ esp_err_t wifi_provisioning_start(void) {
 
     if (bits & WIFI_PROV_DONE_BIT) {
         ESP_LOGI(TAG, "✅ Provisioning completed successfully!");
+        s_is_provisioning_mode = false;  // 清除配网模式标志
         vEventGroupDelete(s_wifi_event_group);
         return ESP_OK;
     } else {
         ESP_LOGW(TAG, "⏱️ Provisioning timeout");
+        s_is_provisioning_mode = false;  // 清除配网模式标志
         vEventGroupDelete(s_wifi_event_group);
         return ESP_ERR_TIMEOUT;
     }
