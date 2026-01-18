@@ -13,7 +13,7 @@
  * 【√】配置联网模式
  * 【√】配网模式的oled显示
  * 【√】修改仪表盘为半圆，并且显示
- * 【】倒计时结束，不关机
+ * 【√】倒计时结束，不关机bug，已修改
  * 【】关机一定时间后不断wifi待机
  * 【】阶段优化冗余代码
  * 【】拆分代码
@@ -499,17 +499,30 @@ float pid_compute(pid_controller_t *pid, float current_temp, float dt)
 
     float error = pid->target_temp - current_temp;
 
-    // 死区逻辑：如果误差在±0.5°C范围内，则不进行调整
-    if (fabs(error) < 0.1f) {
-        ESP_LOGI(pidTAG, "误差%.2f在死区内，无需调整", error);
-        return pid->output;  // 保持上次输出
+    // 死区逻辑：如果误差在±1.0°C范围内，则不进行调整
+    if (fabs(error) < 1.0f) {
+        // 在死区内，逐渐降低输出，避免持续加热
+        if (pid->output > 0) {
+            pid->output *= 0.95f;  // 每个周期衰减5%
+            if (pid->output < 10) pid->output = 0;  // 降到10以下直接归零
+        }
+        return pid->output;
     }
 
     // ========== P项 ==========
     float p_term = pid->kp * error;
 
-    // ========== I项（移除限制） ==========
-    pid->integral += error * dt;
+    // ========== I项（抗积分饱和） ==========
+    // 只有在误差较小时才累积积分项，避免积分饱和
+    if (fabs(error) < 5.0f) {
+        pid->integral += error * dt;
+    }
+
+    // 积分项限幅：防止积分饱和
+    float max_integral = 50.0f / pid->ki;  // 积分项最大贡献50%输出
+    if (pid->integral > max_integral) pid->integral = max_integral;
+    if (pid->integral < -max_integral) pid->integral = -max_integral;
+
     float i_term = pid->ki * pid->integral;
 
     // ========== D项 ==========
@@ -648,8 +661,10 @@ static void timer_callback(TimerHandle_t timer)
     is_OPEN = false;
     system_start_time_ms = 0;  // 重置系统运行时间
     timer_is_running = false;  // 清除运行标志
-    timer_handle = NULL;        // 清除句柄(定时器已自动停止)
-    ESP_LOGI(pidTAG, "✅ 定时器已自动关闭并清理");
+    timer_start_time_ms = 0;   // 重置定时器启动时间
+    // 注意：不删除 timer_handle，保留定时器以便下次使用
+    // FreeRTOS 单次定时器到期后会自动停止，但句柄仍然有效
+    ESP_LOGI(pidTAG, "✅ 定时器已自动关闭（句柄保留）");
 }
 
 // ========== 创建定时器 ==========
@@ -693,10 +708,11 @@ void create_system_timer(float hours)
 void start_system_timer(void)
 {
     if (timer_handle != NULL) {
+        ESP_LOGI(pidTAG, "🔍 尝试启动定时器: TIMER_HOURS_CONFIG=%.2f小时", TIMER_HOURS_CONFIG);
         if (xTimerStart(timer_handle, 0) == pdPASS) {
             timer_start_time_ms = esp_timer_get_time() / 1000;  // 记录启动时间（毫秒）
             timer_is_running = true;
-            ESP_LOGI(pidTAG, "⏱️ 定时器已启动: %.1f小时, 启动时间=%lld", TIMER_HOURS_CONFIG, timer_start_time_ms);
+            ESP_LOGI(pidTAG, "⏱️ 定时器已启动: %.2f小时, 启动时间=%lld", TIMER_HOURS_CONFIG, timer_start_time_ms);
         } else {
             ESP_LOGE(pidTAG, "❌ 启动定时器失败");
         }
@@ -705,15 +721,14 @@ void start_system_timer(void)
     }
 }
 
-// ========== 停止并删除定时器 ==========
+// ========== 停止定时器（不删除） ==========
 void stop_system_timer(void)
 {
     if (timer_handle != NULL) {
         xTimerStop(timer_handle, 0);
-        xTimerDelete(timer_handle, 0);
-        timer_handle = NULL;
         timer_is_running = false;
-        ESP_LOGI(pidTAG, "⏹️ 定时器已停止并删除");
+        timer_start_time_ms = 0;
+        ESP_LOGI(pidTAG, "⏹️ 定时器已停止");
     }
 }
 
@@ -908,12 +923,25 @@ void pid_temperature_control_task(void *pvParameter)
         add_temp_to_curve(current_temp);
         
         if (is_OPEN) {
-            // 如果 is_OPEN 为 true，执行正常 PID 控制逻辑
-            if (current_temp > MAX_TEMP_LIMIT) {
-                ESP_LOGW(pidTAG, "⚠️ 超温保护！%.2f℃", current_temp);
+            // 超温保护：温度超过目标值5度时强制关闭
+            if (current_temp > heater_pid.target_temp + 5.0f) {
+                ESP_LOGW(pidTAG, "⚠️ 超温保护！%.2f℃ > 目标+5℃", current_temp);
                 set_heater_pwm(0);
-                heater_pid.integral = 0;
+                heater_pid.pwm_duty = 0;
+                heater_pid.integral = 0;  // 清零积分项
                 set_fan_pwm(100.0f);  // 超温时风扇全速
+                vTaskDelay(pdMS_TO_TICKS(PID_INTERVAL_MS));
+                continue;
+            }
+
+            // 极限温度保护
+            if (current_temp > MAX_TEMP_LIMIT) {
+                ESP_LOGE(pidTAG, "🔥 极限温度保护！%.2f℃", current_temp);
+                set_heater_pwm(0);
+                heater_pid.pwm_duty = 0;
+                heater_pid.integral = 0;
+                set_fan_pwm(100.0f);  // 风扇全速
+                is_OPEN = false;  // 自动关闭系统
                 vTaskDelay(pdMS_TO_TICKS(PID_INTERVAL_MS));
                 continue;
             }

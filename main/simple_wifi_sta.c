@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
@@ -361,16 +362,23 @@ static esp_err_t config_post_handler(httpd_req_t *req)
         set_fan_pwm(fan_speed);
 
         // 更新定时器配置
+        // 使用浮点数差值比较，避免精度问题
+        bool timer_value_changed = (fabs(TIMER_HOURS_CONFIG - timer_hours) > 0.001f);
         TIMER_HOURS_CONFIG = timer_hours;
-        bool timer_was_running = timer_is_running;  // 记录定时器是否正在运行
-        create_system_timer(timer_hours);
 
-        // 如果系统正在运行且设置了定时器，需要重新启动定时器
-        if (is_OPEN && timer_hours > 0.0f) {
-            start_system_timer();
-            ESP_LOGI(TAG, "✅ 定时器配置已更新并重新启动: %.1f小时", timer_hours);
+        // 只有在定时器时长改变时才重新创建定时器
+        if (timer_value_changed) {
+            create_system_timer(timer_hours);
+
+            // 如果系统正在运行且设置了定时器，需要重新启动定时器
+            if (is_OPEN && timer_hours > 0.0f) {
+                start_system_timer();
+                ESP_LOGI(TAG, "✅ 定时器配置已更新并重新启动: %.2f小时", timer_hours);
+            } else {
+                ESP_LOGI(TAG, "✅ 定时器配置已更新: %.2f小时", timer_hours);
+            }
         } else {
-            ESP_LOGI(TAG, "✅ 定时器配置已更新: %.1f小时", timer_hours);
+            ESP_LOGI(TAG, "✅ 定时器时长未改变，保持原状: %.2f小时", timer_hours);
         }
 
         // 保存到 NVS（统一保存 PID + 风扇 + 定时器）

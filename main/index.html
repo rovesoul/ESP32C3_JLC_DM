@@ -903,7 +903,8 @@
 
         // 更新定时器倒计时显示
         // 如果配置了定时器（timerHours > 0）并且系统已启动，显示倒计时
-        if (data.timerHours > 0 && isOPEN) {
+        const timerHours = parseFloat(data.timerHours);
+        if (timerHours > 0 && isOPEN) {
           if (data.timerRemaining >= 0) {
             document.getElementById("timerDisplay").classList.remove("hidden");
             updateTimerDisplay(data.timerRemaining);
