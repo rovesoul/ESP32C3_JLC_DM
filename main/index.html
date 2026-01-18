@@ -492,11 +492,11 @@
                   <input
                     type="number"
                     id="TIMER_HOURS"
-                    step="0.5"
+                    step="0.01"
                     min="0"
                     max="24"
                     value="0.0"
-                    placeholder="0表示关闭定时器"
+                    placeholder="0表示关闭定时器，最小0.01小时(36秒)"
                   />
                 </div>
               </div>
@@ -892,6 +892,15 @@
           document.getElementById("runningTimeDisplay").classList.add("hidden");
         }
 
+        // 更新系统开关状态（同步多客户端状态）
+        if (data.isOPEN !== undefined) {
+          const newIsOPEN = data.isOPEN === "true" || data.isOPEN === true;
+          if (newIsOPEN !== isOPEN) {
+            isOPEN = newIsOPEN;
+            updateUIState();
+          }
+        }
+
         // 更新定时器倒计时显示
         // 如果配置了定时器（timerHours > 0）并且系统已启动，显示倒计时
         if (data.timerHours > 0 && isOPEN) {
@@ -907,11 +916,8 @@
           }
         }
 
-        // 如果倒计时结束，自动关闭系统
-        if (data.timerRemaining === 0 && lastTimerRemaining > 0) {
-          toggleSystem();
-          lastTimerRemaining = 0;
-        }
+        // 注意: 倒计时结束由后端定时器回调自动处理,前端无需额外操作
+        // 后端定时器到期后会自动设置 is_OPEN = false,前端会通过轮询检测到状态变化
       }
 
       // 页面加载时获取当前 PID 数据并设置默认值
@@ -925,7 +931,7 @@
           data.TARGET_TEMP.toFixed(1);
         document.getElementById("FAN_SPEED").value = data.fanSpeed.toFixed(0);
         document.getElementById("TIMER_HOURS").value =
-          data.timerHours.toFixed(1);
+          data.timerHours.toFixed(2);
       }
 
       // 调用函数设置默认值

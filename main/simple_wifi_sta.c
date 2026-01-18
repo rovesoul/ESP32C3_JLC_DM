@@ -119,8 +119,8 @@ static esp_err_t values_get_handler(httpd_req_t *req)
     }
 
     int len = snprintf(response, sizeof(response),
-        "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f,\"ntcTemp\":%.2f,\"pwmPercent\":%.2f,\"dhtTemp\":%.2f,\"dhtHumidity\":%.2f,\"fanSpeed\":%.1f,\"fanActualPwm\":%.1f,\"fanRunning\":%s,\"timerHours\":%.1f,\"timerRemaining\":%d,\"systemRunningSeconds\":%d}",
-        PID_KP, PID_KI, PID_KD, TARGET_TEMP, ntcTemp, pwm_percent, dhtTemp, dhtHumidity, FAN_SPEED_PERCENT, FAN_ACTUAL_PWM, FAN_IS_RUNNING ? "true" : "false", TIMER_HOURS_CONFIG, timer_remaining_seconds, system_running_seconds);
+        "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f,\"ntcTemp\":%.2f,\"pwmPercent\":%.2f,\"dhtTemp\":%.2f,\"dhtHumidity\":%.2f,\"fanSpeed\":%.1f,\"fanActualPwm\":%.1f,\"fanRunning\":%s,\"timerHours\":%.2f,\"timerRemaining\":%d,\"systemRunningSeconds\":%d,\"isOPEN\":%s}",
+        PID_KP, PID_KI, PID_KD, TARGET_TEMP, ntcTemp, pwm_percent, dhtTemp, dhtHumidity, FAN_SPEED_PERCENT, FAN_ACTUAL_PWM, FAN_IS_RUNNING ? "true" : "false", TIMER_HOURS_CONFIG, timer_remaining_seconds, system_running_seconds, is_OPEN ? "true" : "false");
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, response, len);
     return ESP_OK;
@@ -362,8 +362,16 @@ static esp_err_t config_post_handler(httpd_req_t *req)
 
         // 更新定时器配置
         TIMER_HOURS_CONFIG = timer_hours;
+        bool timer_was_running = timer_is_running;  // 记录定时器是否正在运行
         create_system_timer(timer_hours);
-        ESP_LOGI(TAG, "✅ 定时器配置已更新: %.1f小时", timer_hours);
+
+        // 如果系统正在运行且设置了定时器，需要重新启动定时器
+        if (is_OPEN && timer_hours > 0.0f) {
+            start_system_timer();
+            ESP_LOGI(TAG, "✅ 定时器配置已更新并重新启动: %.1f小时", timer_hours);
+        } else {
+            ESP_LOGI(TAG, "✅ 定时器配置已更新: %.1f小时", timer_hours);
+        }
 
         // 保存到 NVS（统一保存 PID + 风扇 + 定时器）
         esp_err_t err = save_config_to_nvs(true, true, false, true,

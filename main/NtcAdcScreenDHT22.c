@@ -647,7 +647,9 @@ static void timer_callback(TimerHandle_t timer)
     ESP_LOGI(pidTAG, "⏰ 定时器到期，自动关闭系统");
     is_OPEN = false;
     system_start_time_ms = 0;  // 重置系统运行时间
-    // 注意：定时器是单次触发，会自动停止
+    timer_is_running = false;  // 清除运行标志
+    timer_handle = NULL;        // 清除句柄(定时器已自动停止)
+    ESP_LOGI(pidTAG, "✅ 定时器已自动关闭并清理");
 }
 
 // ========== 创建定时器 ==========
