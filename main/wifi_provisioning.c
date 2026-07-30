@@ -49,7 +49,7 @@ static bool s_is_provisioning_mode = false;
  */
 static void generate_provisioning_ssid(char *ssid, size_t max_len) {
     uint8_t mac[6];
-    esp_wifi_get_mac(ESP_IF_WIFI_STA, mac);
+    esp_wifi_get_mac(WIFI_IF_STA, mac);
     snprintf(ssid, max_len, "%s_%02X%02X%02X",
              PROVISIONING_SSID_PREFIX, mac[3], mac[4], mac[5]);
 }

@@ -1,8 +1,9 @@
-idf_component_register(SRCS "NtcAdcScreenDHT22.c" "ntc.c" "dht22.c" "OLED.c" "OLED_Data.c" "simple_wifi_sta.c" "wifi_provisioning.c"
+idf_component_register(SRCS "NtcAdcScreenDHT22.c" "ntc.c" "dht22.c" "OLED.c" "OLED_Data.c" "simple_wifi_sta.c" "wifi_provisioning.c" "ina226_monitor.c"
                     REQUIRES
                      driver
                      esp_driver_ledc
                      esp_driver_gpio
+                     esp_driver_i2c
                      esp_adc
                     PRIV_REQUIRES
                      freertos

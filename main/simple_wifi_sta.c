@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <inttypes.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
@@ -19,6 +20,7 @@
 #include "esp_netif.h"
 #include "lwip/inet.h"
 #include "NtcAdcScreenDHT22.h"
+#include "ina226_monitor.h"
 
 // 请根据你家路由器修改下面两个宏：SSID 和 PASSWORD
 // 把这两个改成你的 WiFi 名称和密码后再编译烧录
@@ -61,6 +63,9 @@ extern float TARGET_TEMP;
 extern float ntcTemp;
 extern float dhtTemp;
 extern float dhtHumidity;
+extern bool dhtAvailable;
+extern bool dhtHasValidReading;
+extern uint32_t dhtFailCount;
 extern bool is_OPEN;
 extern float FAN_SPEED_PERCENT;
 extern float FAN_ACTUAL_PWM;
@@ -89,6 +94,8 @@ static esp_err_t index_get_handler(httpd_req_t *req)
     const unsigned char *data = _binary_index_html_start;
     size_t len = (size_t)(_binary_index_html_end - _binary_index_html_start);
     httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    httpd_resp_set_hdr(req, "Pragma", "no-cache");
     httpd_resp_send(req, (const char *)data, len);
     return ESP_OK;
 }
@@ -98,8 +105,9 @@ static esp_err_t index_get_handler(httpd_req_t *req)
  */
 static esp_err_t values_get_handler(httpd_req_t *req)
 {
-    char response[600];
+    char response[1200];
     float pwm_percent = (heater_pid.pwm_duty * 100.0f) / 10000;
+    ina226_status_t ina226 = ina226_get_status();
 
     // 计算定时器剩余秒数
     int timer_remaining_seconds = 0;
@@ -120,8 +128,61 @@ static esp_err_t values_get_handler(httpd_req_t *req)
     }
 
     int len = snprintf(response, sizeof(response),
-        "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f,\"ntcTemp\":%.2f,\"pwmPercent\":%.2f,\"dhtTemp\":%.2f,\"dhtHumidity\":%.2f,\"fanSpeed\":%.1f,\"fanActualPwm\":%.1f,\"fanRunning\":%s,\"timerHours\":%.2f,\"timerRemaining\":%d,\"systemRunningSeconds\":%d,\"isOPEN\":%s}",
-        PID_KP, PID_KI, PID_KD, TARGET_TEMP, ntcTemp, pwm_percent, dhtTemp, dhtHumidity, FAN_SPEED_PERCENT, FAN_ACTUAL_PWM, FAN_IS_RUNNING ? "true" : "false", TIMER_HOURS_CONFIG, timer_remaining_seconds, system_running_seconds, is_OPEN ? "true" : "false");
+        "{\"P\":%.2f,\"I\":%.2f,\"D\":%.2f,\"TARGET_TEMP\":%.2f,\"ntcTemp\":%.2f,\"pwmPercent\":%.2f,\"dhtTemp\":%.2f,\"dhtHumidity\":%.2f,\"dhtAvailable\":%s,\"dhtHasValidReading\":%s,\"dhtFailCount\":%" PRIu32 ",\"fanSpeed\":%.1f,\"fanActualPwm\":%.1f,\"fanRunning\":%s,\"timerHours\":%.2f,\"timerRemaining\":%d,\"systemRunningSeconds\":%d,\"isOPEN\":%s,\"ina226Ready\":%s,\"ina226Voltage\":%.3f,\"ina226Current\":%.2f,\"ina226Power\":%.3f,\"ina226CurrentCorrection\":%.4f,\"ina226SessionEnergyWh\":%.4f,\"ina226TotalEnergyWh\":%.4f,\"ina226FailCount\":%" PRIu32 "}",
+        PID_KP, PID_KI, PID_KD, TARGET_TEMP, ntcTemp, pwm_percent, dhtTemp, dhtHumidity, dhtAvailable ? "true" : "false", dhtHasValidReading ? "true" : "false", dhtFailCount, FAN_SPEED_PERCENT, FAN_ACTUAL_PWM, FAN_IS_RUNNING ? "true" : "false", TIMER_HOURS_CONFIG, timer_remaining_seconds, system_running_seconds, is_OPEN ? "true" : "false", ina226.ready ? "true" : "false", ina226.bus_voltage_v, ina226.current_ma, ina226.power_w, ina226.current_correction, ina226.session_energy_wh, ina226.total_energy_wh, ina226.consecutive_failures);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, response, len);
+    return ESP_OK;
+}
+
+/*
+ * HTTP POST：使用外部表实测电流校正 INA226 电流倍率。
+ * 请求体格式：{"referenceCurrentMa":123.4}
+ */
+static esp_err_t ina226_calibrate_post_handler(httpd_req_t *req)
+{
+    int total_len = req->content_len;
+    int cur_len = 0;
+    char buf[120];
+
+    if (total_len >= (int)sizeof(buf)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Request too large");
+        return ESP_FAIL;
+    }
+
+    while (cur_len < total_len) {
+        int read_len = httpd_req_recv(req, buf + cur_len, sizeof(buf) - cur_len - 1);
+        if (read_len <= 0) {
+            if (read_len == HTTPD_SOCK_ERR_TIMEOUT) {
+                continue;
+            }
+            return ESP_FAIL;
+        }
+        cur_len += read_len;
+    }
+    buf[cur_len] = '\0';
+
+    float reference_current_ma = 0.0f;
+    int parsed = sscanf(buf, "{\"referenceCurrentMa\":%f}", &reference_current_ma);
+    if (parsed != 1) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"status\":\"error\",\"message\":\"bad_request\"}", HTTPD_RESP_USE_STRLEN);
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = ina226_set_current_correction_from_reference(reference_current_ma);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "INA226 current calibration failed: %s", esp_err_to_name(err));
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"status\":\"error\",\"message\":\"calibration_failed\"}", HTTPD_RESP_USE_STRLEN);
+        return ESP_FAIL;
+    }
+
+    ina226_status_t ina226 = ina226_get_status();
+    char response[160];
+    int len = snprintf(response, sizeof(response),
+                       "{\"status\":\"ok\",\"currentCorrection\":%.4f,\"currentMa\":%.2f}",
+                       ina226.current_correction, ina226.current_ma);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, response, len);
     return ESP_OK;
@@ -247,8 +308,12 @@ static esp_err_t load_config_from_nvs(bool load_pid, bool load_fan, bool load_to
             PID_KI = pid_values[1];
             PID_KD = pid_values[2];
             TARGET_TEMP = pid_values[3];
-            ESP_LOGI(TAG, "Loaded PID from NVS: P=%.2f, I=%.2f, D=%.2f, TARGET=%.2f",
-                     PID_KP, PID_KI, PID_KD, TARGET_TEMP);
+            heater_pid.kp = PID_KP;
+            heater_pid.ki = PID_KI;
+            heater_pid.kd = PID_KD;
+            heater_pid.target_temp = TARGET_TEMP;
+            ESP_LOGI(TAG, "Loaded PID from NVS and synced controller: P=%.2f, I=%.2f, D=%.2f, TARGET=%.2f",
+                     heater_pid.kp, heater_pid.ki, heater_pid.kd, heater_pid.target_temp);
         } else {
             ESP_LOGI(TAG, "No PID values found in NVS, using defaults");
         }
@@ -534,6 +599,14 @@ static void event_handler(void* arg, esp_event_base_t event_base,int32_t event_i
                                 .user_ctx  = NULL
                             };
                             httpd_register_uri_handler(server, &uri_config);
+
+                            httpd_uri_t uri_ina226_calibrate = {
+                                .uri       = "/ina226/calibrate",
+                                .method    = HTTP_POST,
+                                .handler   = ina226_calibrate_post_handler,
+                                .user_ctx  = NULL
+                            };
+                            httpd_register_uri_handler(server, &uri_ina226_calibrate);
 
                             // 注册 /toggle URI
                             register_toggle_uri(server);

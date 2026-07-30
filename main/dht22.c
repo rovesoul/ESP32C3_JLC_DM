@@ -162,6 +162,7 @@ uint8_t bitInx = 7;
 	esp_rom_delay_us( 25 );
 
 	gpio_set_direction( DHTgpio, GPIO_MODE_INPUT );		// change to input mode
+	gpio_set_pull_mode( DHTgpio, GPIO_PULLUP_ONLY );
   
 	// == DHT will keep the line low for 80 us and then high for 80us ====
 

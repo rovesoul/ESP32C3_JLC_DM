@@ -1,43 +1,72 @@
-# Ignore build directory
-build/
-
-# Ignore backup files
-
-
-# Ignore other temporary files
-*.tmp
-*.log
-*.bak
+# macOS / editor noise
+.DS_Store
 *.swp
 *.swo
+*~
 
-# Ignore SDK configuration backups
-sdkconfig.old
+# Local assistant / experiment folders
+.claude/
+codex/
+AGENTS.md
 
-# Ignore CMake generated files
+# ESP-IDF build directories, including temporary clean-build experiments
+build/
+build_*/
+build-*/
+
+# CMake / Ninja generated files
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 build.ninja
 rules.ninja
+compile_commands.json
 
-# Ignore compiled binaries
+# ESP-IDF generated flash/build artifacts
 *.elf
 *.bin
 *.hex
 *.map
 *.o
+*.obj
 *.a
 *.d
-
-# Ignore flash arguments
+*.S
 *_flash_args
+flash_args
+flash_args.in
+flash_app_args
+flash_project_args
+flash_bootloader_args
+app-flash_args
+app-flash_args.in
+bootloader-flash_args
 flasher_args.json
-
-# Ignore partition table files
+flasher_args.json.in
 partition-table-flash_args
+project_description.json
+project_elf_src_*.c
+ldgen_libraries
+ldgen_libraries.in
+config.env
+kconfigs.in
+kconfigs_projbuild.in
+.ninja_deps
+.ninja_log
+.bin_timestamp
 
-# Ignore other generated files
+# SDK configuration backups
+sdkconfig.old
+sdkconfig.*.old
+
+# Temporary / backup files
+*.tmp
+*.log
+*.bak
+*.orig
+*.rej
+
+# Python cache
 *.pyc
 *.pyo
 __pycache__/

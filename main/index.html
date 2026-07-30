@@ -4,6 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>发热片控制系统</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='29' fill='%23fff7f7' stroke='%23ff6384' stroke-width='5'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='Arial,sans-serif' font-size='34' font-weight='800' fill='%23e53935'%3EH%3C/text%3E%3C/svg%3E"
+    />
     <style>
       * {
         margin: 0;
@@ -75,7 +79,15 @@
       /* 表单网格布局 */
       .form-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+        align-items: start;
+        margin-bottom: 0.5rem;
+      }
+
+      .config-column {
+        display: flex;
+        flex-direction: column;
         gap: 1rem;
       }
 
@@ -154,6 +166,78 @@
 
       .btn-submit:active {
         transform: translateY(0);
+      }
+
+      .btn-secondary {
+        width: 100%;
+        padding: 0.35rem;
+        margin-top: 0.25rem;
+        background: #eef1f8;
+        color: #4f5c76;
+        border: 1px solid #cfd6e6;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .btn-secondary:hover {
+        background: #e3e8f4;
+        border-color: #b9c3dc;
+      }
+
+      .btn-subtle-danger {
+        background: #fbf0f1;
+        color: #8a3a45;
+        border-color: #e4c2c8;
+      }
+
+      .btn-subtle-danger:hover {
+        background: #f5e5e8;
+        border-color: #d5aeb6;
+      }
+
+      .calibration-status {
+        min-height: 1rem;
+        margin-top: 0.25rem;
+        font-size: 0.72rem;
+        color: #666;
+      }
+
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(20, 24, 36, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        z-index: 1000;
+      }
+
+      .modal {
+        width: min(320px, 100%);
+        background: white;
+        border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.24);
+      }
+
+      .modal-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 0.75rem;
+      }
+
+      .modal-actions {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 0.5rem;
+      }
+
+      .modal-close-btn {
+        width: 2.4rem;
       }
 
       /* 控制按钮 */
@@ -307,6 +391,11 @@
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       }
 
+      .clickable-value {
+        position: relative;
+        cursor: pointer;
+      }
+
       .value-label {
         font-size: 0.8rem;
         color: #888;
@@ -351,6 +440,10 @@
         grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
         gap: 0.5rem;
         margin-top: 1rem;
+      }
+
+      .ina226-charts {
+        margin-top: 0.5rem;
       }
 
       .chart-wrapper {
@@ -422,82 +515,105 @@
           <div class="card-title">⚙️ 系统配置</div>
           <form id="configForm">
             <div class="form-grid">
-              <!-- PID参数 -->
-              <div class="form-section">
-                <div class="form-section-title">📊 PID参数</div>
-                <div class="form-group">
-                  <label for="P_value">比例系数 (P)</label>
-                  <input
-                    type="number"
-                    id="P_value"
-                    step="0.01"
-                    value="0.0"
-                    placeholder="0.0"
-                  />
+              <div class="config-column">
+                <!-- PID参数 -->
+                <div class="form-section">
+                  <div class="form-section-title">📊 PID参数</div>
+                  <div class="form-group">
+                    <label for="P_value">比例系数 (P)</label>
+                    <input
+                      type="number"
+                      id="P_value"
+                      step="0.01"
+                      value="0.0"
+                      placeholder="0.0"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="I_value">积分系数 (I)</label>
+                    <input
+                      type="number"
+                      id="I_value"
+                      step="0.01"
+                      value="0.0"
+                      placeholder="0.0"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="D_value">微分系数 (D)</label>
+                    <input
+                      type="number"
+                      id="D_value"
+                      step="0.01"
+                      value="0.0"
+                      placeholder="0.0"
+                    />
+                  </div>
                 </div>
-                <div class="form-group">
-                  <label for="I_value">积分系数 (I)</label>
-                  <input
-                    type="number"
-                    id="I_value"
-                    step="0.01"
-                    value="0.0"
-                    placeholder="0.0"
-                  />
-                </div>
-                <div class="form-group">
-                  <label for="D_value">微分系数 (D)</label>
-                  <input
-                    type="number"
-                    id="D_value"
-                    step="0.01"
-                    value="0.0"
-                    placeholder="0.0"
-                  />
+
+                <!-- 定时器 -->
+                <div class="form-section">
+                  <div class="form-section-title">⏱️ 定时设置</div>
+                  <div class="form-group">
+                    <label for="TIMER_HOURS">定时时长 (小时)</label>
+                    <input
+                      type="number"
+                      id="TIMER_HOURS"
+                      step="0.01"
+                      min="0"
+                      max="24"
+                      value="0.0"
+                      placeholder="0表示关闭定时器，最小0.01小时(36秒)"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <!-- 温度和风扇 -->
-              <div class="form-section">
-                <div class="form-section-title">🌡️ 温度与风扇</div>
-                <div class="form-group">
-                  <label for="TARGET_TEMP">目标温度 (°C)</label>
-                  <input
-                    type="number"
-                    id="TARGET_TEMP"
-                    step="0.1"
-                    value="0.0"
-                    placeholder="35.0"
-                  />
+              <div class="config-column">
+                <!-- 温度和风扇 -->
+                <div class="form-section">
+                  <div class="form-section-title">🌡️ 温度与风扇</div>
+                  <div class="form-group">
+                    <label for="TARGET_TEMP">目标温度 (°C)</label>
+                    <input
+                      type="number"
+                      id="TARGET_TEMP"
+                      step="0.1"
+                      value="0.0"
+                      placeholder="35.0"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="FAN_SPEED">风扇转速 (%)</label>
+                    <input
+                      type="number"
+                      id="FAN_SPEED"
+                      step="1"
+                      min="0"
+                      max="100"
+                      value="100"
+                      placeholder="100"
+                    />
+                  </div>
                 </div>
-                <div class="form-group">
-                  <label for="FAN_SPEED">风扇转速 (%)</label>
-                  <input
-                    type="number"
-                    id="FAN_SPEED"
-                    step="1"
-                    min="0"
-                    max="100"
-                    value="100"
-                    placeholder="100"
-                  />
-                </div>
-              </div>
 
-              <!-- 定时器 -->
-              <div class="form-section">
-                <div class="form-section-title">⏱️ 定时设置</div>
-                <div class="form-group">
-                  <label for="TIMER_HOURS">定时时长 (小时)</label>
-                  <input
-                    type="number"
-                    id="TIMER_HOURS"
-                    step="0.01"
-                    min="0"
-                    max="24"
-                    value="0.0"
-                    placeholder="0表示关闭定时器，最小0.01小时(36秒)"
-                  />
+                <!-- INA226电流校正 -->
+                <div class="form-section">
+                  <div class="form-section-title">🔧 电流校正</div>
+                  <div class="form-group">
+                    <label for="INA226_REF_CURRENT">实测电流 (mA)</label>
+                    <input
+                      type="number"
+                      id="INA226_REF_CURRENT"
+                      step="0.1"
+                      min="0"
+                      placeholder="外部表读数"
+                    />
+                  </div>
+                  <button type="button" class="btn-secondary" id="calibrateIna226">
+                    应用电流校正
+                  </button>
+                  <div class="calibration-status" id="ina226CalibrationStatus"></div>
                 </div>
               </div>
             </div>
@@ -579,6 +695,26 @@
             <div class="value-label">风扇实际PWM</div>
             <div class="value-data" id="current_fanActualPwm">0%</div>
           </div>
+          <div class="value-item ina226-only hidden">
+            <div class="value-label">电压</div>
+            <div class="value-data" id="current_ina226Voltage">-- V</div>
+          </div>
+          <div class="value-item ina226-only hidden">
+            <div class="value-label">电流</div>
+            <div class="value-data" id="current_ina226Current">-- mA</div>
+          </div>
+          <div class="value-item ina226-only hidden">
+            <div class="value-label">功率</div>
+            <div class="value-data" id="current_ina226Power">-- W</div>
+          </div>
+          <div class="value-item ina226-only hidden">
+            <div class="value-label">本轮烘干能量</div>
+            <div class="value-data" id="current_ina226SessionEnergy">-- Wh</div>
+          </div>
+          <div class="value-item ina226-only hidden">
+            <div class="value-label">上电累计能量</div>
+            <div class="value-data" id="current_ina226TotalEnergy">-- Wh</div>
+          </div>
         </div>
 
         <!-- 图表 -->
@@ -590,6 +726,15 @@
             <canvas id="humidityChart"></canvas>
           </div>
         </div>
+
+        <div class="charts-container ina226-charts ina226-only hidden">
+          <div class="chart-wrapper">
+            <canvas id="ina226VoltageCurrentChart"></canvas>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="ina226EnergyChart"></canvas>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -597,6 +742,17 @@
     <script>
       // ========== 定时器相关变量 ==========
       let lastTimerRemaining = -1;
+      let ina226LastSampleTimeMs = null;
+      let ina226UiVisible = false;
+      let ina226OfflineCount = 0;
+      let filteredIna226Voltage = null;
+      let filteredIna226Current = null;
+      const INA226_FILTER_BASE_ALPHA = 0.28;
+      const INA226_FILTER_FAST_ALPHA = 0.82;
+      const INA226_VOLTAGE_FAST_DELTA = 0.8;
+      const INA226_CURRENT_FAST_DELTA = 4.0;
+      let lastValidDhtTemp = null;
+      let lastValidDhtHumidity = null;
 
       // 格式化时间显示 HH:MM:SS
       function formatTime(totalSeconds) {
@@ -607,6 +763,78 @@
           2,
           "0"
         )}:${String(seconds).padStart(2, "0")}`;
+      }
+
+      function formatCurrent(currentMa) {
+        if (Math.abs(currentMa) > 1200) {
+          return (currentMa / 1000).toFixed(2) + " A";
+        }
+        return currentMa.toFixed(1) + " mA";
+      }
+
+      function setIna226Visible(isVisible) {
+        if (ina226UiVisible === isVisible) return;
+        ina226UiVisible = isVisible;
+        document.querySelectorAll(".ina226-only").forEach((element) => {
+          element.classList.toggle("hidden", !isVisible);
+        });
+        if (isVisible) {
+          requestAnimationFrame(() => {
+            ina226VoltageCurrentChart.resize();
+            ina226EnergyChart.resize();
+          });
+        }
+      }
+
+      function updateIna226Visibility(isReady) {
+        if (isReady) {
+          ina226OfflineCount = 0;
+          setIna226Visible(true);
+          return true;
+        }
+
+        ina226OfflineCount += 1;
+        if (ina226OfflineCount >= 5) {
+          setIna226Visible(false);
+          return false;
+        }
+
+        return ina226UiVisible;
+      }
+
+      function trimChartData(chartData, datasetCount, maxPoints = 100) {
+        while (chartData.labels.length > maxPoints) {
+          chartData.labels.shift();
+          for (let i = 0; i < datasetCount; i++) {
+            chartData.datasets[i].data.shift();
+          }
+        }
+      }
+
+      function smoothValue(previousValue, nextValue, baseAlpha, fastDelta, fastAlpha) {
+        if (previousValue === null || !Number.isFinite(previousValue)) {
+          return nextValue;
+        }
+        const delta = Math.abs(nextValue - previousValue);
+        const alpha = delta >= fastDelta ? fastAlpha : baseAlpha;
+        return previousValue + alpha * (nextValue - previousValue);
+      }
+
+      function updateIna226Charts(nowLabel, sampleTimeMs, data) {
+        ina226LastSampleTimeMs = sampleTimeMs;
+
+        ina226VoltageCurrentData.labels.push(nowLabel);
+        ina226VoltageCurrentData.datasets[0].data.push(data.filteredVoltage);
+        ina226VoltageCurrentData.datasets[1].data.push(data.filteredCurrent / 1000);
+
+        ina226EnergyData.labels.push(nowLabel);
+        ina226EnergyData.datasets[0].data.push(data.ina226TotalEnergyWh);
+
+        trimChartData(ina226VoltageCurrentData, 2);
+        trimChartData(ina226EnergyData, 1);
+
+        ina226VoltageCurrentChart.update();
+        ina226EnergyChart.update();
       }
 
       // 更新定时器显示
@@ -648,6 +876,38 @@
           }
         });
 
+      document
+        .getElementById("calibrateIna226")
+        .addEventListener("click", async function () {
+          const input = document.getElementById("INA226_REF_CURRENT");
+          const status = document.getElementById("ina226CalibrationStatus");
+          const referenceCurrentMa = parseFloat(input.value);
+
+          if (!Number.isFinite(referenceCurrentMa) || referenceCurrentMa <= 0) {
+            status.textContent = "请输入大于0的实测电流";
+            status.style.color = "#c62828";
+            return;
+          }
+
+          const response = await fetch("/ina226/calibrate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: `{"referenceCurrentMa":${referenceCurrentMa}}`,
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            status.textContent = `校正倍率 ${result.currentCorrection.toFixed(
+              4
+            )}`;
+            status.style.color = "#2e7d32";
+            await getCurrentValues();
+          } else {
+            status.textContent = "校正失败，请确认INA226已有稳定电流读数";
+            status.style.color = "#c62828";
+          }
+        });
+
       const temperatureData = {
         labels: [],
         datasets: [
@@ -665,6 +925,7 @@
             borderColor: "rgba(54, 162, 235, 1)",
             backgroundColor: "rgba(54, 162, 235, 0.2)",
             fill: true,
+            spanGaps: true,
             tension: 0.4,
           },
         ],
@@ -679,10 +940,70 @@
             borderColor: "rgba(75, 192, 192, 1)",
             backgroundColor: "rgba(75, 192, 192, 0.2)",
             fill: true,
+            spanGaps: true,
             tension: 0.4,
           },
         ],
       };
+
+      const chartLineStyle = {
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 3,
+        pointBorderWidth: 1,
+      };
+
+      temperatureData.datasets.forEach((dataset) =>
+        Object.assign(dataset, chartLineStyle)
+      );
+      humidityData.datasets.forEach((dataset) =>
+        Object.assign(dataset, chartLineStyle)
+      );
+
+      const ina226VoltageCurrentData = {
+        labels: [],
+        datasets: [
+          {
+            label: "电压",
+            data: [],
+            borderColor: "rgba(102, 126, 234, 1)",
+            backgroundColor: "rgba(102, 126, 234, 0.12)",
+            yAxisID: "voltage",
+            fill: true,
+            tension: 0.4,
+          },
+          {
+            label: "电流",
+            data: [],
+            borderColor: "rgba(255, 99, 132, 1)",
+            backgroundColor: "rgba(255, 99, 132, 0.12)",
+            yAxisID: "current",
+            fill: true,
+            tension: 0.4,
+          },
+        ],
+      };
+
+      const ina226EnergyData = {
+        labels: [],
+        datasets: [
+          {
+            label: "上电累计能量",
+            data: [],
+            borderColor: "rgba(20, 184, 166, 1)",
+            backgroundColor: "rgba(20, 184, 166, 0.14)",
+            fill: true,
+            tension: 0.4,
+          },
+        ],
+      };
+
+      ina226VoltageCurrentData.datasets.forEach((dataset) =>
+        Object.assign(dataset, chartLineStyle)
+      );
+      ina226EnergyData.datasets.forEach((dataset) =>
+        Object.assign(dataset, chartLineStyle)
+      );
 
       const temperatureChart = new Chart(
         document.getElementById("temperatureChart"),
@@ -824,12 +1145,167 @@
         }
       );
 
+      const ina226VoltageCurrentChart = new Chart(
+        document.getElementById("ina226VoltageCurrentChart"),
+        {
+          type: "line",
+          data: ina226VoltageCurrentData,
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+              mode: "index",
+              intersect: false,
+            },
+            plugins: {
+              legend: {
+                position: "top",
+                labels: {
+                  font: {
+                    size: 10,
+                    family: "'Segoe UI', 'Microsoft YaHei', sans-serif",
+                  },
+                  usePointStyle: true,
+                  boxWidth: 6,
+                  padding: 6,
+                  borderRadius: 4,
+                },
+              },
+              title: {
+                display: true,
+                text: "电压/电流曲线",
+                font: {
+                  size: 12,
+                  weight: "600",
+                  family: "'Segoe UI', 'Microsoft YaHei', sans-serif",
+                },
+                padding: {
+                  top: 5,
+                  bottom: 5,
+                },
+              },
+            },
+            scales: {
+              x: {
+                ticks: {
+                  font: {
+                    size: 9,
+                  },
+                },
+              },
+              voltage: {
+                position: "left",
+                beginAtZero: true,
+                min: 0,
+                title: {
+                  display: true,
+                  text: "V",
+                  font: {
+                    size: 10,
+                  },
+                },
+                ticks: {
+                  font: {
+                    size: 9,
+                  },
+                },
+              },
+              current: {
+                position: "right",
+                beginAtZero: true,
+                min: 0,
+                title: {
+                  display: true,
+                  text: "A",
+                  font: {
+                    size: 10,
+                  },
+                },
+                grid: {
+                  drawOnChartArea: false,
+                },
+                ticks: {
+                  font: {
+                    size: 9,
+                  },
+                },
+              },
+            },
+          },
+        }
+      );
+
+      const ina226EnergyChart = new Chart(
+        document.getElementById("ina226EnergyChart"),
+        {
+          type: "line",
+          data: ina226EnergyData,
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: "top",
+                labels: {
+                  font: {
+                    size: 10,
+                    family: "'Segoe UI', 'Microsoft YaHei', sans-serif",
+                  },
+                  usePointStyle: true,
+                  boxWidth: 6,
+                  padding: 6,
+                  borderRadius: 4,
+                },
+              },
+              title: {
+                display: true,
+                text: "上电累计能量(Wh)",
+                font: {
+                  size: 12,
+                  weight: "600",
+                  family: "'Segoe UI', 'Microsoft YaHei', sans-serif",
+                },
+                padding: {
+                  top: 5,
+                  bottom: 5,
+                },
+              },
+            },
+            scales: {
+              x: {
+                ticks: {
+                  font: {
+                    size: 9,
+                  },
+                },
+              },
+              y: {
+                title: {
+                  display: true,
+                  text: "Wh",
+                  font: {
+                    size: 10,
+                  },
+                },
+                beginAtZero: true,
+                ticks: {
+                  font: {
+                    size: 9,
+                  },
+                },
+              },
+            },
+          },
+        }
+      );
+
       // 获取当前值
       async function getCurrentValues() {
         const response = await fetch("/values");
         const data = await response.json();
 
-        const now = new Date().toLocaleTimeString();
+        const sampleTimeMs = Date.now();
+        const now = new Date(sampleTimeMs).toLocaleTimeString();
 
         if (temperatureData.labels.length > 100) {
           temperatureData.labels.shift();
@@ -844,10 +1320,14 @@
 
         temperatureData.labels.push(now);
         temperatureData.datasets[0].data.push(data.ntcTemp);
-        temperatureData.datasets[1].data.push(data.dhtTemp);
+        if (data.dhtAvailable === true) {
+          lastValidDhtTemp = data.dhtTemp;
+          lastValidDhtHumidity = data.dhtHumidity;
+        }
+        temperatureData.datasets[1].data.push(lastValidDhtTemp);
 
         humidityData.labels.push(now);
-        humidityData.datasets[0].data.push(data.dhtHumidity);
+        humidityData.datasets[0].data.push(lastValidDhtHumidity);
 
         temperatureChart.update();
         humidityChart.update();
@@ -861,10 +1341,26 @@
           data.ntcTemp.toFixed(1) + "°C";
         document.getElementById("current_pwmPercent").textContent =
           data.pwmPercent.toFixed(1) + "%";
-        document.getElementById("current_dhtTemp").textContent =
-          data.dhtTemp.toFixed(1) + "°C";
-        document.getElementById("current_dhtHumidity").textContent =
-          data.dhtHumidity.toFixed(1) + "%";
+        if (data.dhtAvailable === true) {
+          document.getElementById("current_dhtTemp").textContent =
+            data.dhtTemp.toFixed(1) + "°C";
+          document.getElementById("current_dhtHumidity").textContent =
+            data.dhtHumidity.toFixed(1) + "%";
+          document.getElementById("current_dhtTemp").style.color = "#333";
+          document.getElementById("current_dhtHumidity").style.color = "#333";
+        } else if (data.dhtHasValidReading === true) {
+          document.getElementById("current_dhtTemp").textContent =
+            data.dhtTemp.toFixed(1) + "°C 旧值";
+          document.getElementById("current_dhtHumidity").textContent =
+            data.dhtHumidity.toFixed(1) + "% 旧值";
+          document.getElementById("current_dhtTemp").style.color = "#c62828";
+          document.getElementById("current_dhtHumidity").style.color = "#c62828";
+        } else {
+          document.getElementById("current_dhtTemp").textContent = "DHT失联";
+          document.getElementById("current_dhtHumidity").textContent = "--";
+          document.getElementById("current_dhtTemp").style.color = "#c62828";
+          document.getElementById("current_dhtHumidity").style.color = "#c62828";
+        }
         document.getElementById("current_fanSpeed").textContent =
           data.fanSpeed.toFixed(0) + "%";
 
@@ -879,6 +1375,61 @@
         }
         document.getElementById("current_fanActualPwm").textContent =
           data.fanActualPwm.toFixed(0) + "%";
+
+        const ina226Ready = data.ina226Ready === true;
+        const showIna226 = updateIna226Visibility(ina226Ready);
+
+        if (ina226Ready) {
+          filteredIna226Voltage = smoothValue(
+            filteredIna226Voltage,
+            data.ina226Voltage,
+            INA226_FILTER_BASE_ALPHA,
+            INA226_VOLTAGE_FAST_DELTA,
+            INA226_FILTER_FAST_ALPHA
+          );
+          filteredIna226Current = smoothValue(
+            filteredIna226Current,
+            data.ina226Current,
+            INA226_FILTER_BASE_ALPHA,
+            INA226_CURRENT_FAST_DELTA,
+            INA226_FILTER_FAST_ALPHA
+          );
+          const filteredIna226Data = {
+            ...data,
+            filteredVoltage: filteredIna226Voltage,
+            filteredCurrent: filteredIna226Current,
+          };
+          const filteredPower =
+            filteredIna226Voltage * (filteredIna226Current / 1000);
+
+          document.getElementById("current_ina226Voltage").textContent =
+            filteredIna226Voltage.toFixed(3) + " V";
+          document.getElementById("current_ina226Current").textContent =
+            formatCurrent(filteredIna226Current);
+          document.getElementById("current_ina226Power").textContent =
+            filteredPower.toFixed(3) + " W";
+          document.getElementById("current_ina226SessionEnergy").textContent =
+            data.ina226SessionEnergyWh.toFixed(4) + " Wh";
+          document.getElementById("current_ina226TotalEnergy").textContent =
+            data.ina226TotalEnergyWh.toFixed(4) + " Wh";
+          document.getElementById(
+            "ina226CalibrationStatus"
+          ).textContent = `当前倍率 ${data.ina226CurrentCorrection.toFixed(4)}`;
+          updateIna226Charts(now, sampleTimeMs, filteredIna226Data);
+        } else {
+          document.getElementById("current_ina226Voltage").textContent = "-- V";
+          document.getElementById("current_ina226Current").textContent = "-- mA";
+          document.getElementById("current_ina226Power").textContent = "-- W";
+          document.getElementById("current_ina226SessionEnergy").textContent =
+            "-- Wh";
+          document.getElementById("current_ina226TotalEnergy").textContent =
+            "-- Wh";
+          if (!showIna226) {
+            ina226LastSampleTimeMs = null;
+            filteredIna226Voltage = null;
+            filteredIna226Current = null;
+          }
+        }
 
         // 更新系统运行时间显示
         if (data.systemRunningSeconds > 0) {

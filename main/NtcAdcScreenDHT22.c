@@ -37,8 +37,10 @@
 #include "OLED.h"
 #include "simple_wifi_sta.h"
 #include "wifi_provisioning.h"
+#include "ina226_monitor.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include <inttypes.h>
 
 #define TAG       "main"
 #define ntcTAG    "ntc"
@@ -148,6 +150,9 @@ pid_controller_t heater_pid;
 float ntcTemp = 0.0f;
 float dhtTemp = 0.0f;
 float dhtHumidity = 0.0f;
+bool dhtAvailable = false;
+bool dhtHasValidReading = false;
+uint32_t dhtFailCount = 0;
 // 全局变量表示当前状态（红/绿）
 bool is_OPEN = false;
 
@@ -512,17 +517,8 @@ float pid_compute(pid_controller_t *pid, float current_temp, float dt)
     // ========== P项 ==========
     float p_term = pid->kp * error;
 
-    // ========== I项（抗积分饱和） ==========
-    // 只有在误差较小时才累积积分项，避免积分饱和
-    if (fabs(error) < 5.0f) {
-        pid->integral += error * dt;
-    }
-
-    // 积分项限幅：防止积分饱和
-    float max_integral = 50.0f / pid->ki;  // 积分项最大贡献50%输出
-    if (pid->integral > max_integral) pid->integral = max_integral;
-    if (pid->integral < -max_integral) pid->integral = -max_integral;
-
+    // ========== I项（移除限制） ==========
+    pid->integral += error * dt;
     float i_term = pid->ki * pid->integral;
 
     // ========== D项 ==========
@@ -984,9 +980,24 @@ void tesk_dht22(void *pvParameter)
     while(1) {
         xSemaphoreTake(dht22_mutex, portMAX_DELAY);
         int ret = readDHT();
-        errorHandler(ret);
-        dhtTemp = getTemperature();
-        dhtHumidity = getHumidity();
+        if (ret == DHT_OK) {
+            dhtTemp = getTemperature();
+            dhtHumidity = getHumidity();
+            if (dhtFailCount > 0) {
+                ESP_LOGI(dhtTAG, "DHT22恢复在线，温度:%.1f℃ 湿度:%.1f%%", dhtTemp, dhtHumidity);
+            }
+            dhtFailCount = 0;
+            dhtAvailable = true;
+            dhtHasValidReading = true;
+        } else {
+            dhtFailCount++;
+            if (dhtFailCount >= 3) {
+                dhtAvailable = false;
+            }
+            if (dhtFailCount == 1 || dhtFailCount % 15 == 0) {
+                ESP_LOGW(dhtTAG, "DHT22读取失败: %d, 连续失败:%" PRIu32, ret, dhtFailCount);
+            }
+        }
         xSemaphoreGive(dht22_mutex);
         
         // ESP_LOGI(dhtTAG, "温度:%.1f℃ 湿度:%.1f%%", dhtTemp, dhtHumidity); //SEE
@@ -1067,6 +1078,12 @@ void app_main(void)
     OLED_Init(OLED_I2C, OLED_ADD, OLED_SCL, OLED_SDA, OLED_SPEED);
     OLED_Clear();
 
+    // 初始化INA226，和OLED共用同一条I2C总线
+    esp_err_t ina226_err = ina226_monitor_init();
+    if (ina226_err != ESP_OK) {
+        ESP_LOGW(TAG, "INA226初始化失败: %s", esp_err_to_name(ina226_err));
+    }
+
     // 初始化呼吸灯
     LEDbubble_ledc_init();
 
@@ -1094,6 +1111,9 @@ void app_main(void)
     xTaskCreatePinnedToCore(tesk_dht22, "dht22", 2048, NULL, 3, NULL, 0);
     xTaskCreatePinnedToCore(pid_temperature_control_task, "pid_ctrl", 4096, NULL, 4, NULL, 0);
     xTaskCreatePinnedToCore(oled_display_task, "oled_disp", 3072, NULL, 3, NULL, 0);
+    if (ina226_err == ESP_OK) {
+        xTaskCreatePinnedToCore(ina226_monitor_task, "ina226", 3072, NULL, 3, NULL, 0);
+    }
 
     ESP_LOGI(TAG, "🚀 系统启动完成！");
     ESP_LOGI(TAG, "风扇配置: 转速=%.1f%%, GPIO=%d", FAN_SPEED_PERCENT, FAN_PWM_IO);
