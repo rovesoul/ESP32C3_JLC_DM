@@ -2,7 +2,7 @@
   "idf.openOcdConfigs": [
     "board/esp32c3-builtin.cfg"
   ],
-  "idf.port": "/dev/tty.usbmodem21401",
+  "idf.port": "/dev/tty.usbmodem21301",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32c3"
   },
@@ -15,6 +15,6 @@
   "idf.flashType": "UART",
   "idf.espIdfPath": "/Users/donghuibiao/ESPIDF/idfv6/v6.0/esp-idf",
   "idf.toolsPath": "/Users/donghuibiao/.espressif",
-  "idf.monitorPort": "/dev/tty.usbmodem21401",
+  "idf.monitorPort": "/dev/tty.usbmodem21301",
   "idf.currentSetup": "/Users/donghuibiao/ESPIDF/idfv6/v6.0/esp-idf"
 }
